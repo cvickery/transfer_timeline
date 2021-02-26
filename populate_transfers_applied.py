@@ -14,7 +14,7 @@ drop table if exists transfers_applied cascade;
 create table transfers_applied (
 id serial primary key,
 student_id integer,
-src_inst text,
+src_institution text,
 transfer_model_nbr integer,
 enrollment_term date,
 enrollment_session text default '',
