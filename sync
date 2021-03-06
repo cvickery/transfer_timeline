@@ -1,0 +1,3 @@
+#! /usr/local/bin/bash
+
+ rsync -ve 'ssh -p 54004'  ra.qc.cuny.edu:/Users/vickery/transfers_applied/* .
