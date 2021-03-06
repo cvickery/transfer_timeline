@@ -108,18 +108,15 @@ order by posted_date
         print(f'{changed.posted_date} {changed.student_id} {changed.src_subject} {changed.src_catalog_nbr} => {changed.dst_subject} {changed.dst_catalog_nbr}')
         print(f'{posted_date} {row.student_id} {row.src_subject} {row.src_catalog_nbr} => {row.dst_subject} {row.dst_catalog_nbr}')
         print()
-        try:
-          cursor.execute(f"""
+        cursor.execute(f"""
 insert into transfers_applied_archive({fields}) values ({placeholders})
 """, tuple(old_values))
-          cursor.execute(f"""
+        cursor.execute(f"""
 update transfers_applied set({fields}) = ({placeholders})
  where id = {changed.id}
 """, tuple(new_values))
-        except errors.UniqueViolation as uv:
-          print(uv)
-          conn.commit()
-          exit()
-
+        # TRY CHECKING ID VALUES
+        conn.commit()
+        exit()
 
 conn.commit()
