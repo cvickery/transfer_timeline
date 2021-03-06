@@ -121,5 +121,4 @@ update transfers_applied set({fields}) = ({placeholders})
           conn.commit()
           exit()
 
-
 conn.commit()
