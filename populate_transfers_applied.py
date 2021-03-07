@@ -58,7 +58,11 @@ dst_grade text,
 dst_gpa real
 );
 
-create unique index on transfers_applied (student_id, src_course_id, src_offer_nbr, posted_date);
+create unique index on transfers_applied (student_id,
+                                          src_course_id,
+                                          src_offer_nbr,
+                                          dst_institution,
+                                          posted_date);
 """)
 conn.commit()
 
@@ -70,6 +74,7 @@ with open(latest, newline=None, errors='replace') as csvfile:
 
     if reader.line_num == 1:
       headers = [h.lower().replace(' ', '_') for h in line]
+      print(headers)
       placeholders = ((len(headers)) * '%s,').strip(', ')
       cols = ', '.join([h for h in headers])
       Row = namedtuple('Row', headers)
@@ -101,12 +106,11 @@ with open(latest, newline=None, errors='replace') as csvfile:
                      row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
                      row.dst_catalog_nbr, row.dst_grade, row.dst_gpa)
       try:
-        cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders})',
+        cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
                        value_tuple)
       except errors.UniqueViolation as uv:
-        print(uv, file=sys.stderr)
-        conn.commit()
-        exit()
+        print(uv)
+        print(line)
 
 conn.commit()
 exit()
