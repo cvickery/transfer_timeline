@@ -105,11 +105,10 @@ with open(latest, newline=None, errors='replace') as csvfile:
                      row.academic_program, row.units_taken, row.dst_institution,
                      row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
                      row.dst_catalog_nbr, row.dst_grade, row.dst_gpa)
-      try:
-        cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
-                       value_tuple)
-      except errors.UniqueViolation as uv:
-        print(uv)
+      cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) '
+                     f'on conflict do nothing',
+                     value_tuple)
+      if cursor.rowcount == 0:
         print(line)
 
 conn.commit()
