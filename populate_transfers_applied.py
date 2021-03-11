@@ -92,7 +92,6 @@ with open(latest, newline=None, errors='replace') as csvfile:
 
     if reader.line_num == 1:
       headers = [h.lower().replace(' ', '_') for h in line]
-      print(','.join(headers), file=report)
       cols = [h for h in headers]
       cols.insert(1 + cols.index('src_offer_nbr'), 'src_repeatable')
       # print('cols array', len(cols), cols)
