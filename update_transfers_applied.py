@@ -1,20 +1,23 @@
 #! /usr/bin/env python3
-""" Replace rows in transferred_courses where the posted_date changed; archive replaced rows.
+""" Replace rows in transferred_courses where the posted_date is newer; archive replaced rows.
+    Add new rows.
 """
 
 import csv
 import datetime
 import sys
-from collections import namedtuple
+from collections import namedtuple, defaultdict
+import datetime
 from pathlib import Path
 from pgconnection import PgConnection
-from psycopg2 import errors
 
-conn = PgConnection()
-cursor = conn.cursor()
+curric_conn = PgConnection()
+curric_cursor = curric_conn.cursor()
+trans_conn = PgConnection('cuny_transfers')
+trans_cursor = trans_conn.cursor()
 
-cursor.execute("""
-create table if not exists transfers_applied_archive (
+trans_cursor.execute("""
+create table if not exists transfers_applied_history (
 id                   serial primary key,
  student_id          integer,
  src_institution     text,
@@ -31,6 +34,7 @@ id                   serial primary key,
  src_gpa             real,
  src_course_id       integer,
  src_offer_nbr       integer,
+ src_repeatable      boolean,
  src_description     text,
  academic_program    text,
  units_taken         real,
@@ -43,35 +47,81 @@ id                   serial primary key,
  dst_grade           text,
  dst_gpa             real
 );
-create unique index on transfers_applied_archive (student_id,
-                                                  src_course_id,
-                                                  src_offer_nbr,
-                                                  posted_date);
+create index on transfers_applied_history (student_id,
+                                           src_course_id,
+                                           src_offer_nbr,
+                                           posted_date);
 """)
 
-files = Path('./downloads').glob('CV_QNS*')
-latest = None
-for file in files:
-  if latest is None or file.stat().st_mtime > latest.stat().st_mtime:
-    latest = file
+# If a file was specified on the command line, use that. Otherwise use the latest one found in
+# downloads. The idea is to allow history from previous snapshots to be captured during development,
+# then to use the latest snapshot on a daily basis.
+the_file = None
+try:
+  the_file = Path(sys.argv[1])
+except IndexError as ie:
+  # No snapshot specified; use latest available.
+  files = Path('./downloads').glob('CV_QNS*')
+  for file in files:
+    if the_file is None or file.stat().st_mtime > the_file.stat().st_mtime:
+      the_file = file
+if the_file is None:
+  sys.exit('No input file.')
+print('Using;', the_file,
+      datetime.datetime.fromtimestamp(the_file.stat().st_mtime).strftime('%B %d, %Y'),
+      file=sys.stderr)
 
+# Changes by dst_institution
+num_new = defaultdict(int)
+num_alt = defaultdict(int)
+num_old = defaultdict(int)
+
+# Cache of repeatable courses found
+repeatable = dict()
+
+# Progress indicators
 m = 0
-n = len(open(latest).readlines()) - 1
-with open(latest) as csv_file:
+n = len(open(the_file).readlines()) - 1
+
+with open(the_file) as csv_file:
   reader = csv.reader(csv_file)
   for line in reader:
     if reader.line_num == 1:
       headers = [h.lower().replace(' ', '_') for h in line]
+      cols = [h for h in headers]
+      cols.insert(1 + cols.index('src_offer_nbr'), 'src_repeatable')
+      # print('cols array', len(cols), cols)
+      placeholders = ((len(cols)) * '%s,').strip(', ')
+      # print('placeholders', placeholders.count('s'), placeholders)
+      cols = ', '.join([c for c in cols])
+      # print('cols string', cols.count(',') + 1, cols)
       Row = namedtuple('Row', headers)
-      placeholders = ((len(headers)) * '%s,').strip(', ')
-      posted_date_index = headers.index('posted_date')
-      enrollment_term_index = headers.index('enrollment_term')
-      articulation_term_index = headers.index('articulation_term')
-
     else:
-      row = Row._make(line)
       m += 1
-      print(f'  {m:,}/{n:,}\r', end='', file=sys.stderr)
+      print(f'  {m:06,}/{n:06,}\r', end='', file=sys.stderr)
+      row = Row._make(line)
+
+      yr = 1900 + 100 * int(row.enrollment_term[0]) + int(row.enrollment_term[1:3])
+      mo = int(row.enrollment_term[-1])
+      da = 1
+      enrollment_term = datetime.date(yr, mo, da)
+
+      yr = 1900 + 100 * int(row.articulation_term[0]) + int(row.articulation_term[1:3])
+      mo = int(row.articulation_term[-1])
+      articulation_term = datetime.date(yr, mo, da)
+
+      if '/' in row.posted_date:
+        mo, da, yr = row.posted_date.split('/')
+        posted_date = datetime.date(int(yr), int(mo), int(da))
+      else:
+        posted_date = None
+
+      src_course_id = int(row.src_course_id)
+      src_offer_nbr = int(row.src_offer_nbr)
+      src_catalog_nbr = row.src_catalog_nbr.strip()
+      dst_course_id = int(row.dst_course_id)
+      dst_offer_nbr = int(row.dst_offer_nbr)
+      dst_catalog_nbr = row.dst_catalog_nbr.strip()
 
       mo, da, yr = row.posted_date.split('/')
       posted_date = datetime.date(int(yr), int(mo), int(da))
@@ -85,40 +135,101 @@ with open(latest) as csv_file:
       mo = int(row.articulation_term[-1])
       articulation_term = datetime.date(yr, mo, da)
 
-      cursor.execute(f"""
+      """ Categorize the record
+            {student_id, src_institution, src_course_id, src_offer_nbr, dst_institution} is new:
+              Increment num_new
+              Add the record to transfers_applied
+            Record exists with no change
+              Increment num_old
+              Ignore
+            The destination course has changed
+              Increment num_alt
+              Add current row from transfers_applied to transfer_applied_history
+              Add the new record to transfers_applied
+      """
+
+      # Look up existing transfers_applied record
+      trans_cursor.execute(f"""
 select * from transfers_applied
  where student_id = {row.student_id}
-   and src_course_id = {row.src_course_id}
-   and src_offer_nbr = {row.src_offer_nbr}
-   and posted_date != '{posted_date}'::date
-order by posted_date
+   and src_course_id = {src_course_id}
+   and src_offer_nbr = {src_offer_nbr}
+   and dst_institution = '{row.dst_institution}'
 """)
-      for changed in cursor.fetchall():
-        fields = list(changed._asdict().keys())[1:]
-        fields = ', '.join([f for f in fields])
-        old_values = list(changed._asdict().values())[1:]
-        new_values = list(row._asdict().values())
-        # Put terms and dates in db format
-        new_values[posted_date_index] = posted_date
-        new_values[enrollment_term_index] = enrollment_term
-        new_values[articulation_term_index] = articulation_term
-        print(old_values)
-        print(new_values)
-        # print(f'\n{fields}\n{values}\n{placeholders}\n', file=sys.stderr)
-        print(f'{changed.posted_date} {changed.student_id} {changed.src_subject} {changed.src_catalog_nbr} => {changed.dst_subject} {changed.dst_catalog_nbr}')
-        print(f'{posted_date} {row.student_id} {row.src_subject} {row.src_catalog_nbr} => {row.dst_subject} {row.dst_catalog_nbr}')
-        print()
+      if trans_cursor.rowcount == 0:
+        # Not Found: add new record
+        num_new[row.dst_institution] += 1
+        # Determine whether the src course is repeatable or not
         try:
-          cursor.execute(f"""
-insert into transfers_applied_archive({fields}) values ({placeholders})
-""", tuple(old_values))
-          cursor.execute(f"""
-update transfers_applied set({fields}) = ({placeholders})
- where id = {changed.id}
-""", tuple(new_values))
-        except errors.UniqueViolation as uv:
-          print(uv)
-          conn.commit()
-          exit()
+          src_repeatable = repeatable[(src_course_id, src_offer_nbr)]
+        except KeyError:
+          curric_cursor.execute(f'select repeatable from cuny_courses where course_id = '
+                                f'{src_course_id} and offer_nbr = {src_offer_nbr}')
+          if curric_cursor.rowcount != 1:
+            trans_cursor.execute(f"insert into missing_courses values({src_course_id}, "
+                                 f"{src_offer_nbr}, '{row.src_institution}', '{row.src_subject}', "
+                                 f"'{row.src_catalog_nbr}') on conflict do nothing")
+            src_repeatable = None
+          else:
+            src_repeatable = curric_cursor.fetchone().repeatable
+          repeatable[(int(row.src_course_id), (row.src_offer_nbr))] = src_repeatable
+        # print('values tuple', len(value_tuple), value_tuple)
+        value_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
+                       enrollment_term, row.enrollment_session, articulation_term,
+                       row.model_status, posted_date, row.src_subject, src_catalog_nbr,
+                       row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
+                       row.src_offer_nbr, src_repeatable, row.src_description,
+                       row.academic_program, row.units_taken, row.dst_institution,
+                       row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
+                       dst_catalog_nbr, row.dst_grade, row.dst_gpa)
+        trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
+                             value_tuple)
 
-conn.commit()
+      elif trans_cursor.rowcount == 1:
+        # Record exists: has destination course changed?
+        record = trans_cursor.fetchone()
+        if int(record.dst_course_id) == dst_course_id \
+           and int(record.dst_offer_nbr) == dst_offer_nbr:
+           num_old[row.dst_institution] += 1
+           # Most common case: nothing more to do
+        else:
+          # Different destination course:
+          #   Write the previous record to the history table
+          trans_cursor.execute(f'insert into transfers_applied_history values({record})')
+          # Insert the new record
+          # Determine whether the src course is repeatable or not
+          try:
+            src_repeatable = repeatable[(src_course_id, src_offer_nbr)]
+          except KeyError:
+            curric_cursor.execute(f'select repeatable from cuny_courses where course_id = '
+                                  f'{src_course_id} and offer_nbr = {src_offer_nbr}')
+            if curric_cursor.rowcount != 1:
+              trans_cursor.execute(f"insert into missing_courses values({src_course_id}, "
+                                   f"{src_offer_nbr}, '{row.src_institution}', "
+                                   f"'{row.src_subject}', '{row.src_catalog_nbr}') "
+                                   f"on conflict do nothing")
+              src_repeatable = None
+            else:
+              src_repeatable = curric_cursor.fetchone().repeatable
+              repeatable[(int(row.src_course_id), (row.src_offer_nbr))] = src_repeatable
+            # print('values tuple', len(value_tuple), value_tuple)
+          value_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
+                         enrollment_term, row.enrollment_session, articulation_term,
+                         row.model_status, posted_date, row.src_subject, src_catalog_nbr,
+                         row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
+                         row.src_offer_nbr, src_repeatable, row.src_description,
+                         row.academic_program, row.units_taken, row.dst_institution,
+                         row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
+                         dst_catalog_nbr, row.dst_grade, row.dst_gpa)
+          trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
+                               value_tuple)
+
+      else:
+        # Anomaly: mustiple records already exist
+        sys.exit(f'Error: there are {trans_cursor.rowcount} records for {row.student_id} '
+                 f'{src_course_id:06}.{src_offer_nbr} => {row.dst_institution}')
+
+print(num_old)
+print(num_new)
+print(num_alt)
+
