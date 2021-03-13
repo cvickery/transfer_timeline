@@ -11,6 +11,8 @@ import datetime
 from pathlib import Path
 from pgconnection import PgConnection
 
+debug = open('./debug', 'w')
+
 curric_conn = PgConnection()
 curric_cursor = curric_conn.cursor()
 trans_conn = PgConnection('cuny_transfers')
@@ -75,6 +77,9 @@ print('Using;', the_file,
 num_new = defaultdict(int)
 num_alt = defaultdict(int)
 num_old = defaultdict(int)
+
+# Skip by src_institution
+num_skip = defaultdict(int)
 
 # Cache of repeatable courses found
 repeatable = dict()
@@ -173,17 +178,17 @@ select * from transfers_applied
           else:
             src_repeatable = curric_cursor.fetchone().repeatable
           repeatable[(int(row.src_course_id), (row.src_offer_nbr))] = src_repeatable
-        # print('values tuple', len(value_tuple), value_tuple)
-        value_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
-                       enrollment_term, row.enrollment_session, articulation_term,
-                       row.model_status, posted_date, row.src_subject, src_catalog_nbr,
-                       row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
-                       row.src_offer_nbr, src_repeatable, row.src_description,
-                       row.academic_program, row.units_taken, row.dst_institution,
-                       row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
-                       dst_catalog_nbr, row.dst_grade, row.dst_gpa)
+        # print('values tuple', len(values_tuple), values_tuple)
+        values_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
+                        enrollment_term, row.enrollment_session, articulation_term,
+                        row.model_status, posted_date, row.src_subject, src_catalog_nbr,
+                        row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
+                        row.src_offer_nbr, src_repeatable, row.src_description,
+                        row.academic_program, row.units_taken, row.dst_institution,
+                        row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
+                        dst_catalog_nbr, row.dst_grade, row.dst_gpa)
         trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
-                             value_tuple)
+                             values_tuple)
 
       elif trans_cursor.rowcount == 1:
         # Record exists: has destination course changed?
@@ -195,7 +200,11 @@ select * from transfers_applied
         else:
           # Different destination course:
           #   Write the previous record to the history table
-          trans_cursor.execute(f'insert into transfers_applied_history values({record})')
+          r = record._asdict()
+          r.pop('id')
+          values_tuple = tuple(r.values())
+          trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
+                               values_tuple)
           # Insert the new record
           # Determine whether the src course is repeatable or not
           try:
@@ -212,24 +221,41 @@ select * from transfers_applied
             else:
               src_repeatable = curric_cursor.fetchone().repeatable
               repeatable[(int(row.src_course_id), (row.src_offer_nbr))] = src_repeatable
-            # print('values tuple', len(value_tuple), value_tuple)
-          value_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
-                         enrollment_term, row.enrollment_session, articulation_term,
-                         row.model_status, posted_date, row.src_subject, src_catalog_nbr,
-                         row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
-                         row.src_offer_nbr, src_repeatable, row.src_description,
-                         row.academic_program, row.units_taken, row.dst_institution,
-                         row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
-                         dst_catalog_nbr, row.dst_grade, row.dst_gpa)
+            # print('values tuple', len(values_tuple), values_tuple)
+          values_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
+                          enrollment_term, row.enrollment_session, articulation_term,
+                          row.model_status, posted_date, row.src_subject, src_catalog_nbr,
+                          row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
+                          row.src_offer_nbr, src_repeatable, row.src_description,
+                          row.academic_program, row.units_taken, row.dst_institution,
+                          row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
+                          dst_catalog_nbr, row.dst_grade, row.dst_gpa)
           trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
-                               value_tuple)
+                               values_tuple)
 
       else:
         # Anomaly: mustiple records already exist
-        sys.exit(f'Error: there are {trans_cursor.rowcount} records for {row.student_id} '
-                 f'{src_course_id:06}.{src_offer_nbr} => {row.dst_institution}')
+        for record in trans_cursor.fetchall():
+          print(f'{record.student_id:8} {record.src_institution} {record.src_subject} '
+                f'{record.src_catalog_nbr} {record.src_repeatable} =>'
+                f'{record.dst_institution} {record.src_catalog_nbr}', file=debug)
+        print(f'Skipping {row.student_id:8} {row.dst_institution} {row.dst_subject} '
+              f'{row.dst_catalog_nbr}\n',
+              file=debug)
+        num_skip[row.src_institution] += 1
 
-print(num_old)
-print(num_new)
-print(num_alt)
+print('\nOld:\nRecv     Count')
+for key in sorted(num_old.keys()):
+  print(f'{key[0:3]}: {num_old[key]:7,}')
 
+print('\nNew:\nRecv     Count')
+for key in sorted(num_new.keys()):
+  print(f'{key[0:3]}: {num_new[key]:7,}')
+
+print('\nChanged:\nRecv     Count')
+for key in sorted(num_alt.keys()):
+  print(f'{key[0:3]}: {num_alt[key]:7,}')
+
+print('\nSkipped:\nSend     Count')
+for key in sorted(num_skip.keys()):
+  print(f'{key[0:3]}: {num_alt[key]:7,}')
