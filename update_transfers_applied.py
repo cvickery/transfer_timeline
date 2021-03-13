@@ -237,25 +237,26 @@ select * from transfers_applied
         # Anomaly: mustiple records already exist
         for record in trans_cursor.fetchall():
           print(f'{record.student_id:8} {record.src_institution} {record.src_subject} '
-                f'{record.src_catalog_nbr} {record.src_repeatable} =>'
-                f'{record.dst_institution} {record.src_catalog_nbr}', file=debug)
+                f'{record.src_catalog_nbr} {record.src_repeatable} => '
+                f'{record.dst_institution} {record.dst_subject} {record.src_catalog_nbr}',
+                file=debug)
         print(f'Skipping {row.student_id:8} {row.dst_institution} {row.dst_subject} '
               f'{row.dst_catalog_nbr}\n',
               file=debug)
         num_skip[row.src_institution] += 1
 
-print('\nOld:\nRecv     Count')
+print('\nOld:\nRecv  Count')
 for key in sorted(num_old.keys()):
-  print(f'{key[0:3]}: {num_old[key]:7,}')
+  print(f'{key[0:3]} {num_old[key]:7,}')
 
-print('\nNew:\nRecv     Count')
+print('\nNew:\nRecv  Count')
 for key in sorted(num_new.keys()):
-  print(f'{key[0:3]}: {num_new[key]:7,}')
+  print(f'{key[0:3]} {num_new[key]:7,}')
 
-print('\nChanged:\nRecv     Count')
+print('\nChanged:\nRecv  Count')
 for key in sorted(num_alt.keys()):
-  print(f'{key[0:3]}: {num_alt[key]:7,}')
+  print(f'{key[0:3]} {num_alt[key]:7,}')
 
-print('\nSkipped:\nSend     Count')
+print('\nSkipped:\nSend  Count')
 for key in sorted(num_skip.keys()):
-  print(f'{key[0:3]}: {num_alt[key]:7,}')
+  print(f'{key[0:3]} {num_skip[key]:7,}')
