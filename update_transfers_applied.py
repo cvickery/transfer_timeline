@@ -11,8 +11,6 @@ import datetime
 from pathlib import Path
 from pgconnection import PgConnection
 
-debug = open('./debug', 'w')
-
 curric_conn = PgConnection()
 curric_cursor = curric_conn.cursor()
 trans_conn = PgConnection('cuny_transfers')
@@ -69,17 +67,21 @@ except IndexError as ie:
       the_file = file
 if the_file is None:
   sys.exit('No input file.')
-print('Using;', the_file,
-      datetime.datetime.fromtimestamp(the_file.stat().st_mtime).strftime('%B %d, %Y'),
+
+file_date = datetime.datetime.fromtimestamp(the_file.stat().st_mtime)
+print('Using:', the_file,
+      file_date.strftime('%B %d, %Y'),
       file=sys.stderr)
+debug = open(file_date.strftime('%Y-%m-%d') + '_debug.txt', 'w')
 
 # Changes by dst_institution
 num_new = defaultdict(int)
 num_alt = defaultdict(int)
 num_old = defaultdict(int)
 
-# Skip by src_institution
-num_skip = defaultdict(int)
+# Multiple existing records and missing courses by src_institution
+num_mult = defaultdict(int)
+num_miss = defaultdict(int)
 
 # Cache of repeatable courses found
 repeatable = dict()
@@ -213,6 +215,7 @@ select * from transfers_applied
             curric_cursor.execute(f'select repeatable from cuny_courses where course_id = '
                                   f'{src_course_id} and offer_nbr = {src_offer_nbr}')
             if curric_cursor.rowcount != 1:
+              num_miss[row.src_instituion] += 1
               trans_cursor.execute(f"insert into missing_courses values({src_course_id}, "
                                    f"{src_offer_nbr}, '{row.src_institution}', "
                                    f"'{row.src_subject}', '{row.src_catalog_nbr}') "
@@ -228,13 +231,19 @@ select * from transfers_applied
                           row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
                           row.src_offer_nbr, src_repeatable, row.src_description,
                           row.academic_program, row.units_taken, row.dst_institution,
-                          row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
-                          dst_catalog_nbr, row.dst_grade, row.dst_gpa)
+                          row.dst_designation, row.dst_course_id, row.dst_offer_nbr,
+                          row.dst_subject, dst_catalog_nbr, row.dst_grade, row.dst_gpa)
           trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
                                values_tuple)
 
       else:
         # Anomaly: mustiple records already exist
+        #   It could be that the source course is repeatable, in which case we would need to
+        #   deterimine which record to replace, for which we don't yet have an algorithm.
+        #   But if the course is not repeatable, it means the student's record was updated twice in
+        #   one day for some reason.
+        # In either case, skip the new data and enter the issue in the debug report.
+        #   Or we could just add the new data to the existing melange.
         for record in trans_cursor.fetchall():
           print(f'{record.student_id:8} {record.src_institution} {record.src_subject} '
                 f'{record.src_catalog_nbr} {record.src_repeatable} => '
@@ -243,20 +252,25 @@ select * from transfers_applied
         print(f'Skipping {row.student_id:8} {row.dst_institution} {row.dst_subject} '
               f'{row.dst_catalog_nbr}\n',
               file=debug)
-        num_skip[row.src_institution] += 1
+        num_mult[row.src_institution] += 1
 
-print('\nOld:\nRecv  Count')
-for key in sorted(num_old.keys()):
-  print(f'{key[0:3]} {num_old[key]:7,}')
+with open('reports/' + file_date.strftime('%Y-%m-%d'), 'w') as report:
+  print('\nOld:\nRecv  Count', file=report)
+  for key in sorted(num_old.keys()):
+    print(f'{key[0:3]} {num_old[key]:7,}', file=report)
 
-print('\nNew:\nRecv  Count')
-for key in sorted(num_new.keys()):
-  print(f'{key[0:3]} {num_new[key]:7,}')
+  print('\nNew:\nRecv  Count', file=report)
+  for key in sorted(num_new.keys()):
+    print(f'{key[0:3]} {num_new[key]:7,}', file=report)
 
-print('\nChanged:\nRecv  Count')
-for key in sorted(num_alt.keys()):
-  print(f'{key[0:3]} {num_alt[key]:7,}')
+  print('\nChanged:\nRecv  Count', file=report)
+  for key in sorted(num_alt.keys()):
+    print(f'{key[0:3]} {num_alt[key]:7,}', file=report)
 
-print('\nSkipped:\nSend  Count')
-for key in sorted(num_skip.keys()):
-  print(f'{key[0:3]} {num_skip[key]:7,}')
+  print('\nMultiple Existing:\nSend  Count', file=report)
+  for key in sorted(num_mult.keys()):
+    print(f'{key[0:3]} {num_mult[key]:7,}', file=report)
+
+  print('\nMissing Courses:\nSend  Count', file=report)
+  for key in sorted(num_miss.keys()):
+    print(f'{key[0:3]} {num_miss[key]:7,}', file=report)
