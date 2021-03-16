@@ -1,0 +1,3 @@
+#! /usr/local/bin/bash
+time ./populate_transfers_applied.py
+time for file in downloads/CV_QNS_TRNS_DTL_SRC_CLASS_ALL*; do ./update_transfers_applied.py $file; done;
