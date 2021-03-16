@@ -47,10 +47,12 @@ id                   serial primary key,
  dst_grade           text,
  dst_gpa             real
 );
+
 create index on transfers_applied_history (student_id,
                                            src_course_id,
                                            src_offer_nbr,
                                            posted_date);
+commit;
 """)
 
 # If a file was specified on the command line, use that. Otherwise use the latest one found in
@@ -201,12 +203,14 @@ select * from transfers_applied
            # Most common case: nothing more to do
         else:
           # Different destination course:
+          num_alt[row.dst_institution] += 1
           #   Write the previous record to the history table
           r = record._asdict()
           r.pop('id')
           values_tuple = tuple(r.values())
-          trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
-                               values_tuple)
+          trans_cursor.execute(f'insert into transfers_applied_history ({cols}) values '
+                               f'({placeholders}) ', values_tuple)
+          print(trans_cursor.query, file=debug)
           # Insert the new record
           # Determine whether the src course is repeatable or not
           try:
@@ -253,24 +257,21 @@ select * from transfers_applied
               f'{row.dst_catalog_nbr}\n',
               file=debug)
         num_mult[row.src_institution] += 1
+trans_conn.commit()
 
-with open('reports/' + file_date.strftime('%Y-%m-%d'), 'w') as report:
-  print('\nOld:\nRecv  Count', file=report)
+ymd = file_date.strftime('%Y-%m-%d')
+with open('reports/' + ymd, 'w') as report:
   for key in sorted(num_old.keys()):
-    print(f'{key[0:3]} {num_old[key]:7,}', file=report)
+    print(f'{ymd} unchanged {key[0:3]} {num_old[key]:7,}', file=report)
 
-  print('\nNew:\nRecv  Count', file=report)
   for key in sorted(num_new.keys()):
-    print(f'{key[0:3]} {num_new[key]:7,}', file=report)
+    print(f'{ymd} new {key[0:3]} {num_new[key]:7,}', file=report)
 
-  print('\nChanged:\nRecv  Count', file=report)
   for key in sorted(num_alt.keys()):
-    print(f'{key[0:3]} {num_alt[key]:7,}', file=report)
+    print(f'{ymd} altered {key[0:3]} {num_alt[key]:7,}', file=report)
 
-  print('\nMultiple Existing:\nSend  Count', file=report)
   for key in sorted(num_mult.keys()):
-    print(f'{key[0:3]} {num_mult[key]:7,}', file=report)
+    print(f'{ymd} multiple {key[0:3]} {num_mult[key]:7,}', file=report)
 
-  print('\nMissing Courses:\nSend  Count', file=report)
   for key in sorted(num_miss.keys()):
-    print(f'{key[0:3]} {num_miss[key]:7,}', file=report)
+    print(f'{ymd} missing {key[0:3]} {num_miss[key]:7,}', file=report)
