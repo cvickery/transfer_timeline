@@ -31,23 +31,34 @@ except IndexError as ie:
 if the_file is None:
   sys.exit('No input file.')
 
+# Using the date the file was transferred to Tumbleweed as a proxy for CF SYSDATE
 file_date = datetime.datetime.fromtimestamp(the_file.stat().st_mtime)
 print('Using:', the_file,
       file_date.strftime('%B %d, %Y'),
       file=sys.stderr)
-debug = open(file_date.strftime('%Y-%m-%d') + '_debug.txt', 'w')
+iso_file_date = file_date.strftime('%Y-%m-%d')
+debug = open(f'./debugs/{iso_file_date}', 'w')
 
-# Changes by dst_institution
-num_new = defaultdict(int)
-num_alt = defaultdict(int)
-num_old = defaultdict(int)
+# Changes, indexed by dst_institution
+num_new = defaultdict(int)      # never before seen
+num_alt = defaultdict(int)      # real changes
+num_old = defaultdict(int)      # posted date <= max already in db
+num_already = defaultdict(int)  # new data, but duplicates existing
 
-# Multiple existing records and missing courses by src_institution
+# Multiple existing records and missing courses, indexed by src_institution
 num_mult = defaultdict(int)
 num_miss = defaultdict(int)
 
+# Miscellaneous anomalies, indexed by src_institution, dst_institution
+num_debug = defaultdict(int)
+
 # Cache of repeatable courses found
 repeatable = dict()
+
+# Anything posted before the latest in our DB is ignored
+trans_cursor.execute('select max(posted_date) from transfers_applied')
+max_posted_date = trans_cursor.fetchone().max
+print(f"Using only transactions posted after {max_posted_date.strftime('%B %d, %Y')}.")
 
 # Progress indicators
 m = 0
@@ -71,6 +82,17 @@ with open(the_file) as csv_file:
       print(f'  {m:06,}/{n:06,}\r', end='', file=sys.stderr)
       row = Row._make(line)
 
+      if '/' in row.posted_date:
+        mo, da, yr = row.posted_date.split('/')
+        posted_date = datetime.date(int(yr), int(mo), int(da))
+      else:
+        posted_date = None
+
+      # Ignore old records
+      if posted_date and posted_date <= max_posted_date:
+        num_old[row.dst_institution] += 1
+        continue
+
       yr = 1900 + 100 * int(row.enrollment_term[0]) + int(row.enrollment_term[1:3])
       mo = int(row.enrollment_term[-1])
       da = 1
@@ -79,12 +101,6 @@ with open(the_file) as csv_file:
       yr = 1900 + 100 * int(row.articulation_term[0]) + int(row.articulation_term[1:3])
       mo = int(row.articulation_term[-1])
       articulation_term = datetime.date(yr, mo, da)
-
-      if '/' in row.posted_date:
-        mo, da, yr = row.posted_date.split('/')
-        posted_date = datetime.date(int(yr), int(mo), int(da))
-      else:
-        posted_date = None
 
       src_course_id = int(row.src_course_id)
       src_offer_nbr = int(row.src_offer_nbr)
@@ -93,19 +109,7 @@ with open(the_file) as csv_file:
       dst_offer_nbr = int(row.dst_offer_nbr)
       dst_catalog_nbr = row.dst_catalog_nbr.strip()
 
-      mo, da, yr = row.posted_date.split('/')
-      posted_date = datetime.date(int(yr), int(mo), int(da))
-
-      yr = 1900 + 100 * int(row.enrollment_term[0]) + int(row.enrollment_term[1:3])
-      mo = int(row.enrollment_term[-1])
-      da = 1
-      enrollment_term = datetime.date(yr, mo, da)
-
-      yr = 1900 + 100 * int(row.articulation_term[0]) + int(row.articulation_term[1:3])
-      mo = int(row.articulation_term[-1])
-      articulation_term = datetime.date(yr, mo, da)
-
-      """ Categorize the record
+      """ Categorize the row
             {student_id, src_institution, src_course_id, src_offer_nbr, dst_institution} is new:
               Increment num_new
               Add the record to transfers_applied
@@ -127,7 +131,8 @@ select * from transfers_applied
    and dst_institution = '{row.dst_institution}'
 """)
       if trans_cursor.rowcount == 0:
-        # Not Found: add new record
+        # Not in transfers_applied yet: add new record
+        # --------------------------------------------
         num_new[row.dst_institution] += 1
         # Determine whether the src course is repeatable or not
         try:
@@ -156,11 +161,22 @@ select * from transfers_applied
                              values_tuple)
 
       elif trans_cursor.rowcount == 1:
-        # Record exists: has destination course changed?
+        # One matching row already exists in transfers_applied
+        # ----------------------------------------------------
         record = trans_cursor.fetchone()
+        # ... be sure this posted date is newer
+        if record.posted_date and (record.posted_date >= posted_date):
+          # Existing record is not older: ignore it, and add to debug file for verification
+          num_debug[(row.src_institution, row.dst_institution)] += 1
+          print(f'*** CF query {the_file}: posted dated is not newer than existing '
+                f'tranfers_applied posted_date\n',
+                f'CF row: {line}\nDB record: {record}\n', file=debug)
+          continue
+
+        #   has destination course changed?
         if int(record.dst_course_id) == dst_course_id \
            and int(record.dst_offer_nbr) == dst_offer_nbr:
-           num_old[row.dst_institution] += 1
+           num_already[row.dst_institution] += 1
            # Most common case: nothing more to do
         else:
           # Different destination course:
@@ -171,7 +187,6 @@ select * from transfers_applied
           values_tuple = tuple(r.values())
           trans_cursor.execute(f'insert into transfers_applied_history ({cols}) values '
                                f'({placeholders}) ', values_tuple)
-          print(trans_cursor.query, file=debug)
           # Insert the new record
           # Determine whether the src course is repeatable or not
           try:
@@ -209,30 +224,38 @@ select * from transfers_applied
         #   one day for some reason.
         # In either case, skip the new data and enter the issue in the debug report.
         #   Or we could just add the new data to the existing melange.
+        print(f'{trans_cursor.rowcount} existing {row.student_id:8} {row.dst_institution} '
+              f'{int(row.dst_course_id):06}.{row.dst_offer_nbr} {row.dst_subject} '
+              f'{row.dst_catalog_nbr}', file=debug)
         for record in trans_cursor.fetchall():
-          print(f'{record.student_id:8} {record.src_institution} {record.src_subject} '
+          print(f'  {record.student_id:8} {record.src_institution} {record.src_subject} '
                 f'{record.src_catalog_nbr} {record.src_repeatable} => '
-                f'{record.dst_institution} {record.dst_subject} {record.src_catalog_nbr}',
+                f'{record.dst_institution} {record.dst_subject} {record.dst_catalog_nbr}',
                 file=debug)
-        print(f'Skipping {row.student_id:8} {row.dst_institution} {row.dst_subject} '
-              f'{row.dst_catalog_nbr}\n',
-              file=debug)
+        print(file=debug)
         num_mult[row.src_institution] += 1
 trans_conn.commit()
+trans_conn.close()
 
-ymd = file_date.strftime('%Y-%m-%d')
-with open('reports/' + ymd, 'w') as report:
+with open('reports/' + iso_file_date, 'w') as report:
   for key in sorted(num_old.keys()):
-    print(f'{ymd} unchanged {key[0:3]} {num_old[key]:7,}', file=report)
+    print(f'{iso_file_date} old {key[0:3]} {num_old[key]:7,}', file=report)
+
+  for key in sorted(num_already.keys()):
+    print(f'{iso_file_date} unchanged {key[0:3]} {num_already[key]:7,}', file=report)
 
   for key in sorted(num_new.keys()):
-    print(f'{ymd} new {key[0:3]} {num_new[key]:7,}', file=report)
+    print(f'{iso_file_date} new {key[0:3]} {num_new[key]:7,}', file=report)
 
   for key in sorted(num_alt.keys()):
-    print(f'{ymd} altered {key[0:3]} {num_alt[key]:7,}', file=report)
+    print(f'{iso_file_date} altered {key[0:3]} {num_alt[key]:7,}', file=report)
 
   for key in sorted(num_mult.keys()):
-    print(f'{ymd} multiple {key[0:3]} {num_mult[key]:7,}', file=report)
+    print(f'{iso_file_date} multiple {key[0:3]} {num_mult[key]:7,}', file=report)
 
   for key in sorted(num_miss.keys()):
-    print(f'{ymd} missing {key[0:3]} {num_miss[key]:7,}', file=report)
+    print(f'{iso_file_date} missing {key[0:3]} {num_miss[key]:7,}', file=report)
+
+  for key in sorted(num_debug.keys()):
+    key_str = f'{key[0][0:3]}:{key[1][0:3]}'
+    print(f'{iso_file_date} debug {key_str} {num_debug[key]:7,}', file=report)
