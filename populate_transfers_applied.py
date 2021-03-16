@@ -81,8 +81,47 @@ catalog_number text not NULL,
 primary key (course_id, offer_nbr)
 );
 
+-- Set up the archive table too
+drop table if exists transfers_applied_history cascade;
+create table transfers_applied_history (
+id                   serial primary key,
+ student_id          integer,
+ src_institution     text,
+ transfer_model_nbr  integer,
+ enrollment_term     date,
+ enrollment_session  text,
+ articulation_term   date,
+ model_status        text,
+ posted_date         date,
+ src_subject         text,
+ src_catalog_nbr     text,
+ src_designation     text,
+ src_grade           text,
+ src_gpa             real,
+ src_course_id       integer,
+ src_offer_nbr       integer,
+ src_repeatable      boolean,
+ src_description     text,
+ academic_program    text,
+ units_taken         real,
+ dst_institution     text,
+ dst_designation     text,
+ dst_course_id       integer,
+ dst_offer_nbr       integer,
+ dst_subject         text,
+ dst_catalog_nbr     text,
+ dst_grade           text,
+ dst_gpa             real
+);
+
+create index on transfers_applied_history (student_id,
+                                           src_course_id,
+                                           src_offer_nbr,
+                                           posted_date);
+
+commit;
+
 """)
-conn.commit()
 
 m = 0
 n = len(open(latest, newline=None, errors='replace').readlines())
