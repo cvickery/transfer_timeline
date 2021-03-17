@@ -6,7 +6,7 @@
 # timestamp the log file
 echo '*** ' `date`
 # If not on babbage, sync downloads with babbage.
-if [[ `hostname` != babbage.local ]]
+if [[ `hostname` != babbage.cs.qc.cuny.edu ]]
 then ./sync
 fi
 
