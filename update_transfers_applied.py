@@ -34,7 +34,7 @@ if the_file is None:
     if the_file is None or file.stat().st_mtime > the_file.stat().st_mtime:
       the_file = file
 else:
-  the_file = Path(f'./downloads/{the_file}')
+  the_file = Path(the_file)
 
 if the_file is None:
   sys.exit('No input file.')
