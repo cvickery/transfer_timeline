@@ -1,11 +1,14 @@
 #! /usr/local/bin/bash
 # cron job to run daily
 
+# set -x
+
+# timestamp the log file
+echo '*** ' `date`
 # If not on babbage, sync downloads with babbage.
 if [[ `hostname` != babbage.local ]]
 then ./sync
 fi
 
 # Update from the latest download
-./update_transfers_applied.py
-
+./update_transfers_applied.py --no_progress

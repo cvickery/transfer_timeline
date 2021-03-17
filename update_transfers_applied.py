@@ -1,4 +1,4 @@
-#! /usr/bin/env python3
+#! /usr/local/bin/python3
 """ Replace rows in transferred_courses where the posted_date is newer; archive replaced rows.
     Add new rows.
 """
@@ -6,10 +6,17 @@
 import csv
 import datetime
 import sys
+import argparse
 from collections import namedtuple, defaultdict
 import datetime
 from pathlib import Path
 from pgconnection import PgConnection
+
+parser = argparse.ArgumentParser('Update Transfers')
+parser.add_argument('-np', '--no_progress', action='store_true')
+parser.add_argument('file', nargs='?')
+args = parser.parse_args()
+progress = not args.no_progress
 
 curric_conn = PgConnection()
 curric_cursor = curric_conn.cursor()
@@ -19,10 +26,8 @@ trans_cursor = trans_conn.cursor()
 # If a file was specified on the command line, use that. Otherwise use the latest one found in
 # downloads. The idea is to allow history from previous snapshots to be captured during development,
 # then to use the latest snapshot on a daily basis.
-the_file = None
-try:
-  the_file = Path(sys.argv[1])
-except IndexError as ie:
+the_file = args.file
+if the_file is None:
   # No snapshot specified; use latest available.
   files = Path('./downloads').glob('CV_QNS*')
   for file in files:
@@ -56,8 +61,14 @@ num_debug = defaultdict(int)
 repeatable = dict()
 
 # Anything posted before the latest in our DB is ignored
-trans_cursor.execute('select max(posted_date) from transfers_applied')
+max_post_added = None
+trans_cursor.execute('select max(last_post) from update_history')
 max_posted_date = trans_cursor.fetchone().max
+if max_posted_date is None:
+  # Nothing in the update history yet, get the max posted_date from the transfers_applied file
+  trans_cursor.execute('select max(posted_date) from transfers_applied')
+  max_posted_date = trans_cursor.fetchone().max
+
 print(f"Using only transactions posted after {max_posted_date.strftime('%B %d, %Y')}.")
 
 # Progress indicators
@@ -79,7 +90,8 @@ with open(the_file) as csv_file:
       Row = namedtuple('Row', headers)
     else:
       m += 1
-      print(f'  {m:06,}/{n:06,}\r', end='', file=sys.stderr)
+      if progress:
+        print(f'  {m:06,}/{n:06,}\r', end='', file=sys.stderr)
       row = Row._make(line)
 
       if '/' in row.posted_date:
@@ -215,6 +227,8 @@ select * from transfers_applied
                           row.dst_subject, dst_catalog_nbr, row.dst_grade, row.dst_gpa)
           trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
                                values_tuple)
+          if (max_post_added is None) or (posted_date > max_post_added):
+            max_post_added = posted_date
 
       else:
         # Anomaly: mustiple records already exist
@@ -234,6 +248,16 @@ select * from transfers_applied
                 file=debug)
         print(file=debug)
         num_mult[row.src_institution] += 1
+
+if max_post_added is None:
+  max_post_added = 'NULL'
+else:
+  max_post_added = f"'{max_post_added}'"
+
+trans_cursor.execute(f"""
+insert into update_history (file_name, file_date, last_post)
+            values ('{the_file.name}', '{file_date}', {max_post_added})
+""")
 trans_conn.commit()
 trans_conn.close()
 

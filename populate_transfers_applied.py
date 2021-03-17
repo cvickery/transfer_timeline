@@ -119,6 +119,16 @@ create index on transfers_applied_history (student_id,
                                            src_offer_nbr,
                                            posted_date);
 
+-- The update_history table
+drop table if exists update_history;
+
+create table update_history (
+id          serial primary key,
+file_name   text,
+file_date   date,
+last_post   date
+);
+
 commit;
 
 """)
