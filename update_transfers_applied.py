@@ -29,7 +29,7 @@ trans_cursor = trans_conn.cursor()
 the_file = args.file
 if the_file is None:
   # No snapshot specified; use latest available.
-  files = Path('./downloads').glob('CV_QNS*')
+  files = Path('./downloads').glob('CV*ALL*')
   for file in files:
     if the_file is None or file.stat().st_mtime > the_file.stat().st_mtime:
       the_file = file
