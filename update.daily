@@ -1,0 +1,11 @@
+#! /usr/local/bin/bash
+# cron job to run daily
+
+# If not on babbage, sync downloads with babbage.
+if [[ `hostname` != babbage.local ]]
+then ./sync
+fi
+
+# Update from the latest download
+./update_transfers_applied.py
+
