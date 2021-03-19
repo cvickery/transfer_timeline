@@ -41,17 +41,25 @@ if the_file is None:
 
 # Using the date the file was transferred to Tumbleweed as a proxy for CF SYSDATE
 file_date = datetime.datetime.fromtimestamp(the_file.stat().st_mtime)
+file_name = the_file.name
+
 print('Using:', the_file,
       file_date.strftime('%B %d, %Y'),
       file=sys.stderr)
 iso_file_date = file_date.strftime('%Y-%m-%d')
 debug = open(f'./debugs/{iso_file_date}', 'w')
 
-# Changes, indexed by dst_institution
+# Record types, indexed by dst_institution
 num_new = defaultdict(int)      # never before seen
 num_alt = defaultdict(int)      # real changes
 num_old = defaultdict(int)      # posted date <= max already in db
 num_already = defaultdict(int)  # new data, but duplicates existing
+
+# Data for the update_history table
+last_post = None
+num_added = 0
+num_changed = 0
+num_skipped = 0
 
 # Multiple existing records and missing courses, indexed by src_institution
 num_mult = defaultdict(int)
@@ -69,21 +77,31 @@ trans_cursor.execute('select max(last_post) from update_history')
 max_posted_date = trans_cursor.fetchone().max
 if max_posted_date is None:
   # Nothing in the update history yet, get the max posted_date from the transfers_applied file
-  trans_cursor.execute('select max(posted_date) from transfers_applied')
-  max_posted_date = trans_cursor.fetchone().max
+  # trans_cursor.execute('select max(posted_date) from transfers_applied')
+  # max_posted_date = trans_cursor.fetchone().max
+  sys.exit('No last posted date in history table')
 
 print(f"Using only transactions posted after {max_posted_date.strftime('%B %d, %Y')}.")
 
 # Progress indicators
 m = 0
-n = len(open(the_file).readlines()) - 1
+num_records = len(open(the_file, encoding='ascii', errors='backslashreplace').readlines()) - 1
 
-with open(the_file) as csv_file:
+with open(the_file, encoding='ascii', errors='backslashreplace') as csv_file:
   reader = csv.reader(csv_file)
   for line in reader:
     if reader.line_num == 1:
       headers = [h.lower().replace(' ', '_') for h in line]
       cols = [h for h in headers]
+
+      values_added = None
+      if 'comment' not in cols:
+        # Columns not present in queries prior to 2021-03-18
+        cols += ['reject_reason', 'transfer_overridden', 'override_reason', 'comment']
+        values_added = ('', False, '', '')
+      else:
+        cols.remove('sysdate')
+
       cols.insert(1 + cols.index('src_offer_nbr'), 'src_repeatable')
       # print('cols array', len(cols), cols)
       placeholders = ((len(cols)) * '%s,').strip(', ')
@@ -92,9 +110,14 @@ with open(the_file) as csv_file:
       # print('cols string', cols.count(',') + 1, cols)
       Row = namedtuple('Row', headers)
     else:
+      if reader.line_num == 2 and values_added is None:
+        # SYSDATE is available: substitute it for file_date
+        mo, da, yr = [int(x) for x in line[-1].split('/')]
+        file_date = datetime.datetime(yr, mo, da)
+
       m += 1
       if progress:
-        print(f'  {m:06,}/{n:06,}\r', end='', file=sys.stderr)
+        print(f'  {m:06,}/{num_records:06,}\r', end='', file=sys.stderr)
       row = Row._make(line)
 
       if '/' in row.posted_date:
@@ -106,16 +129,18 @@ with open(the_file) as csv_file:
       # Ignore old records
       if posted_date and posted_date <= max_posted_date:
         num_old[row.dst_institution] += 1
+        num_skipped += 1
+        print(f'{posted_date=} <= {max_posted_date=}')
         continue
 
-      yr = 1900 + 100 * int(row.enrollment_term[0]) + int(row.enrollment_term[1:3])
-      mo = int(row.enrollment_term[-1])
-      da = 1
-      enrollment_term = datetime.date(yr, mo, da)
+      # yr = 1900 + 100 * int(row.enrollment_term[0]) + int(row.enrollment_term[1:3])
+      # mo = int(row.enrollment_term[-1])
+      # da = 1
+      # enrollment_term = datetime.date(yr, mo, da)
 
-      yr = 1900 + 100 * int(row.articulation_term[0]) + int(row.articulation_term[1:3])
-      mo = int(row.articulation_term[-1])
-      articulation_term = datetime.date(yr, mo, da)
+      # yr = 1900 + 100 * int(row.articulation_term[0]) + int(row.articulation_term[1:3])
+      # mo = int(row.articulation_term[-1])
+      # articulation_term = datetime.date(yr, mo, da)
 
       src_course_id = int(row.src_course_id)
       src_offer_nbr = int(row.src_offer_nbr)
@@ -129,7 +154,7 @@ with open(the_file) as csv_file:
               Increment num_new
               Add the record to transfers_applied
             Record exists with no change
-              Increment num_old
+              Increment num_already
               Ignore
             The destination course has changed
               Increment num_alt
@@ -148,7 +173,6 @@ select * from transfers_applied
       if trans_cursor.rowcount == 0:
         # Not in transfers_applied yet: add new record
         # --------------------------------------------
-        num_new[row.dst_institution] += 1
         # Determine whether the src course is repeatable or not
         try:
           src_repeatable = repeatable[(src_course_id, src_offer_nbr)]
@@ -165,15 +189,25 @@ select * from transfers_applied
           repeatable[(int(row.src_course_id), (row.src_offer_nbr))] = src_repeatable
         # print('values tuple', len(values_tuple), values_tuple)
         values_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
-                        enrollment_term, row.enrollment_session, articulation_term,
+                        row.enrollment_term, row.enrollment_session, row.articulation_term,
                         row.model_status, posted_date, row.src_subject, src_catalog_nbr,
                         row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
                         row.src_offer_nbr, src_repeatable, row.src_description,
                         row.academic_program, row.units_taken, row.dst_institution,
                         row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
                         dst_catalog_nbr, row.dst_grade, row.dst_gpa)
+        if values_added is None:
+          values_tuple += (row.reject_reason, row.transfer_overridden == 'Y', row.override_reason,
+                           row.comment)
+        else:
+          values_tuple += values_added
+        # print(cols)
+        # print(placeholders)
+        # print(values_tuple)
         trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
                              values_tuple)
+        num_new[row.dst_institution] += 1
+        num_added += 1
 
       elif trans_cursor.rowcount == 1:
         # One matching row already exists in transfers_applied
@@ -186,6 +220,9 @@ select * from transfers_applied
           print(f'*** CF query {the_file}: posted dated is not newer than existing '
                 f'tranfers_applied posted_date\n',
                 f'CF row: {line}\nDB record: {record}\n', file=debug)
+          num_already[row.dst_institution] += 1
+          num_skipped += 1
+          print(f'{record_posted_date=} >= {posted_date=}')
           continue
 
         #   has destination course changed?
@@ -195,7 +232,6 @@ select * from transfers_applied
            # Most common case: nothing more to do
         else:
           # Different destination course:
-          num_alt[row.dst_institution] += 1
           #   Write the previous record to the history table
           r = record._asdict()
           r.pop('id')
@@ -228,10 +264,14 @@ select * from transfers_applied
                           row.academic_program, row.units_taken, row.dst_institution,
                           row.dst_designation, row.dst_course_id, row.dst_offer_nbr,
                           row.dst_subject, dst_catalog_nbr, row.dst_grade, row.dst_gpa)
+          if values_added is not None:
+            values_tuple += values_added
           trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
                                values_tuple)
           if (max_post_added is None) or (posted_date > max_post_added):
             max_post_added = posted_date
+          num_alt[row.dst_institution] += 1
+          num_added += 1
 
       else:
         # Anomaly: mustiple records already exist
@@ -250,6 +290,7 @@ select * from transfers_applied
                 f'{record.dst_institution} {record.dst_subject} {record.dst_catalog_nbr}',
                 file=debug)
         print(file=debug)
+        num_skipped += 1
         num_mult[row.src_institution] += 1
 
 if max_post_added is None:
@@ -258,9 +299,11 @@ else:
   max_post_added = f"'{max_post_added}'"
 
 trans_cursor.execute(f"""
-insert into update_history (file_name, file_date, last_post)
-            values ('{the_file.name}', '{file_date}', {max_post_added})
+insert into update_history values(
+DEFAULT, '{file_name}', '{file_date}', {max_post_added},
+          {num_records}, {num_added}, {num_changed}, {num_skipped})
 """)
+
 trans_conn.commit()
 trans_conn.close()
 
