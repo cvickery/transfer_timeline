@@ -48,6 +48,7 @@ print('Using:', the_file,
       file=sys.stderr)
 iso_file_date = file_date.strftime('%Y-%m-%d')
 debug = open(f'./debugs/{iso_file_date}', 'w')
+print(file_name, file=debug)
 
 # Record types, indexed by dst_institution
 num_new = defaultdict(int)      # never before seen
@@ -55,18 +56,18 @@ num_alt = defaultdict(int)      # real changes
 num_old = defaultdict(int)      # posted date <= max already in db
 num_already = defaultdict(int)  # new data, but duplicates existing
 
-# Data for the update_history table
-last_post = None
-num_added = 0
-num_changed = 0
-num_skipped = 0
-
 # Multiple existing records and missing courses, indexed by src_institution
 num_mult = defaultdict(int)
 num_miss = defaultdict(int)
 
 # Miscellaneous anomalies, indexed by src_institution, dst_institution
 num_debug = defaultdict(int)
+
+# Data for the update_history table
+last_post = None
+num_added = 0
+num_changed = 0
+num_skipped = 0
 
 # Cache of repeatable courses found
 repeatable = dict()
@@ -80,8 +81,9 @@ if max_posted_date is None:
   # trans_cursor.execute('select max(posted_date) from transfers_applied')
   # max_posted_date = trans_cursor.fetchone().max
   sys.exit('No last posted date in history table')
+max_posted_date_str = max_posted_date.strftime('%Y-%m-%d')
 
-print(f"Using only transactions posted after {max_posted_date.strftime('%B %d, %Y')}.")
+print(f"Using only transactions posted after {max_posted_date_str}.")
 
 # Progress indicators
 m = 0
@@ -97,8 +99,8 @@ with open(the_file, encoding='ascii', errors='backslashreplace') as csv_file:
       values_added = None
       if 'comment' not in cols:
         # Columns not present in queries prior to 2021-03-18
-        cols += ['reject_reason', 'transfer_overridden', 'override_reason', 'comment']
-        values_added = ('', False, '', '')
+        cols += ['user_id', 'reject_reason', 'transfer_overridden', 'override_reason', 'comment']
+        values_added = ('00000000', '', False, '', '')
       else:
         cols.remove('sysdate')
 
@@ -130,7 +132,9 @@ with open(the_file, encoding='ascii', errors='backslashreplace') as csv_file:
       if posted_date and posted_date <= max_posted_date:
         num_old[row.dst_institution] += 1
         num_skipped += 1
-        print(f'{posted_date=} <= {max_posted_date=}')
+        posted_date_str = posted_date.strftime('%Y-%m-%d')
+        print(f'Line {m:6}: posted {posted_date_str} <= max_posted {max_posted_date_str}',
+              file=debug)
         continue
 
       # yr = 1900 + 100 * int(row.enrollment_term[0]) + int(row.enrollment_term[1:3])
@@ -197,15 +201,20 @@ select * from transfers_applied
                         row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
                         dst_catalog_nbr, row.dst_grade, row.dst_gpa)
         if values_added is None:
-          values_tuple += (row.reject_reason, row.transfer_overridden == 'Y', row.override_reason,
-                           row.comment)
+          values_tuple += (row.user_id, row.reject_reason, row.transfer_overridden == 'Y',
+                           row.override_reason, row.comment)
         else:
           values_tuple += values_added
-        # print(cols)
-        # print(placeholders)
-        # print(values_tuple)
-        trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
-                             values_tuple)
+        # print(values_tuple, file=debug)
+        try:
+          trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
+                               values_tuple)
+        except IndexError as ie:
+          print('New situation', file=debug)
+          print(cols.count(',') + 1, cols, file=debug)
+          print(placeholders.count('s'), placeholders, file=debug)
+          print(len(values_tuple), values_tuple, file=debug)
+          exit()
         num_new[row.dst_institution] += 1
         num_added += 1
 
@@ -219,17 +228,17 @@ select * from transfers_applied
           num_debug[(row.src_institution, row.dst_institution)] += 1
           print(f'*** CF query {the_file}: posted dated is not newer than existing '
                 f'tranfers_applied posted_date\n',
-                f'CF row: {line}\nDB record: {record}\n', file=debug)
+                f'CF row: {line}\nDB record: {[v for v in record]}\n', file=debug)
           num_already[row.dst_institution] += 1
           num_skipped += 1
-          print(f'{record_posted_date=} >= {posted_date=}')
           continue
 
         #   has destination course changed?
         if int(record.dst_course_id) == dst_course_id \
            and int(record.dst_offer_nbr) == dst_offer_nbr:
-           num_already[row.dst_institution] += 1
            # Most common case: nothing more to do
+           num_already[row.dst_institution] += 1
+           num_skipped += 1
         else:
           # Different destination course:
           #   Write the previous record to the history table
@@ -257,21 +266,33 @@ select * from transfers_applied
               repeatable[(int(row.src_course_id), (row.src_offer_nbr))] = src_repeatable
             # print('values tuple', len(values_tuple), values_tuple)
           values_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
-                          enrollment_term, row.enrollment_session, articulation_term,
+                          row.enrollment_term, row.enrollment_session, row.articulation_term,
                           row.model_status, posted_date, row.src_subject, src_catalog_nbr,
                           row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
                           row.src_offer_nbr, src_repeatable, row.src_description,
                           row.academic_program, row.units_taken, row.dst_institution,
                           row.dst_designation, row.dst_course_id, row.dst_offer_nbr,
                           row.dst_subject, dst_catalog_nbr, row.dst_grade, row.dst_gpa)
-          if values_added is not None:
+          if values_added is None:
+            values_tuple += (row.user_id, row.reject_reason,
+                             row.transfer_overridden == 'Y', row.override_reason,
+                             row.comment)
+          else:
             values_tuple += values_added
-          trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
-                               values_tuple)
+          # print(values_tuple, file=debug)
+          try:
+            trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
+                                 values_tuple)
+          except IndexError as ie:
+            print('Altered situation', file=debug)
+            print(cols.count(',') + 1, cols, file=debug)
+            print(placeholders.count('s'), placeholders, file=debug)
+            print(len(values_tuple), values_tuple, file=debug)
+            exit()
           if (max_post_added is None) or (posted_date > max_post_added):
             max_post_added = posted_date
           num_alt[row.dst_institution] += 1
-          num_added += 1
+          num_changed += 1
 
       else:
         # Anomaly: mustiple records already exist
@@ -290,8 +311,8 @@ select * from transfers_applied
                 f'{record.dst_institution} {record.dst_subject} {record.dst_catalog_nbr}',
                 file=debug)
         print(file=debug)
-        num_skipped += 1
         num_mult[row.src_institution] += 1
+        num_skipped += 1
 
 if max_post_added is None:
   max_post_added = 'NULL'
@@ -309,23 +330,23 @@ trans_conn.close()
 
 with open('reports/' + iso_file_date, 'w') as report:
   for key in sorted(num_old.keys()):
-    print(f'{iso_file_date} old {key[0:3]} {num_old[key]:7,}', file=report)
+    print(f'{iso_file_date}       old {key[0:3]} {num_old[key]:7,}', file=report)
 
   for key in sorted(num_already.keys()):
     print(f'{iso_file_date} unchanged {key[0:3]} {num_already[key]:7,}', file=report)
 
   for key in sorted(num_new.keys()):
-    print(f'{iso_file_date} new {key[0:3]} {num_new[key]:7,}', file=report)
+    print(f'{iso_file_date}       new {key[0:3]} {num_new[key]:7,}', file=report)
 
   for key in sorted(num_alt.keys()):
-    print(f'{iso_file_date} altered {key[0:3]} {num_alt[key]:7,}', file=report)
+    print(f'{iso_file_date}   altered {key[0:3]} {num_alt[key]:7,}', file=report)
 
   for key in sorted(num_mult.keys()):
-    print(f'{iso_file_date} multiple {key[0:3]} {num_mult[key]:7,}', file=report)
+    print(f'{iso_file_date}  multiple {key[0:3]} {num_mult[key]:7,}', file=report)
 
   for key in sorted(num_miss.keys()):
-    print(f'{iso_file_date} missing {key[0:3]} {num_miss[key]:7,}', file=report)
+    print(f'{iso_file_date}   missing {key[0:3]} {num_miss[key]:7,}', file=report)
 
   for key in sorted(num_debug.keys()):
     key_str = f'{key[0][0:3]}:{key[1][0:3]}'
-    print(f'{iso_file_date} debug {key_str} {num_debug[key]:7,}', file=report)
+    print(f'{iso_file_date} *** debug {key_str} {num_debug[key]:7,}', file=report)

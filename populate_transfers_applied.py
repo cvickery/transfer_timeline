@@ -18,8 +18,7 @@ if latest is None:
 print('You are about to overwrite years of intense effort. Repent or Proceed? (R/p) ',
       end='', file=sys.stderr)
 if not input().lower().startswith('p'):
-  print('Ill-advised consequences averted.', file=sys.stderr)
-  exit()
+  sys.exit('Ill-advised consequences averted.')
 
 repeatable = dict()
 
