@@ -7,8 +7,8 @@ import csv
 import datetime
 import sys
 import argparse
+
 from collections import namedtuple, defaultdict
-import datetime
 from pathlib import Path
 from pgconnection import PgConnection
 
