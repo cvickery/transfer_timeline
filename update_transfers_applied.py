@@ -67,6 +67,7 @@ num_debug = defaultdict(int)
 last_post = None
 num_added = 0
 num_changed = 0
+num_missing = 0
 num_skipped = 0
 
 # Cache of repeatable courses found
@@ -221,98 +222,73 @@ select * from transfers_applied
       elif trans_cursor.rowcount == 1:
         # One matching row already exists in transfers_applied
         # ----------------------------------------------------
-        record = trans_cursor.fetchone()
-        # ... be sure this posted date is newer
-        if record.posted_date and (record.posted_date >= posted_date):
-          # Existing record is not older: ignore it, and add to debug file for verification
-          num_debug[(row.src_institution, row.dst_institution)] += 1
-          print(f'*** CF query {the_file}: posted dated is not newer than existing '
-                f'tranfers_applied posted_date\n',
-                f'CF row: {line}\nDB record: {[v for v in record]}\n', file=debug)
-          num_already[row.dst_institution] += 1
-          num_skipped += 1
-          continue
-
-        #   has destination course changed?
-        if int(record.dst_course_id) == dst_course_id \
-           and int(record.dst_offer_nbr) == dst_offer_nbr:
-           # Most common case: nothing more to do
-           num_already[row.dst_institution] += 1
-           num_skipped += 1
-        else:
-          # Different destination course:
-          #   Write the previous record to the history table
-          r = record._asdict()
-          r.pop('id')
-          values_tuple = tuple(r.values())
-          trans_cursor.execute(f'insert into transfers_applied_history ({cols}) values '
-                               f'({placeholders}) ', values_tuple)
-          # Insert the new record
-          # Determine whether the src course is repeatable or not
-          try:
-            src_repeatable = repeatable[(src_course_id, src_offer_nbr)]
-          except KeyError:
-            curric_cursor.execute(f'select repeatable from cuny_courses where course_id = '
-                                  f'{src_course_id} and offer_nbr = {src_offer_nbr}')
-            if curric_cursor.rowcount != 1:
-              num_miss[row.src_instituion] += 1
-              trans_cursor.execute(f"insert into missing_courses values({src_course_id}, "
-                                   f"{src_offer_nbr}, '{row.src_institution}', "
-                                   f"'{row.src_subject}', '{row.src_catalog_nbr}') "
-                                   f"on conflict do nothing")
-              src_repeatable = None
-            else:
-              src_repeatable = curric_cursor.fetchone().repeatable
-              repeatable[(int(row.src_course_id), (row.src_offer_nbr))] = src_repeatable
-            # print('values tuple', len(values_tuple), values_tuple)
-          values_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
-                          row.enrollment_term, row.enrollment_session, row.articulation_term,
-                          row.model_status, posted_date, row.src_subject, src_catalog_nbr,
-                          row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
-                          row.src_offer_nbr, src_repeatable, row.src_description,
-                          row.academic_program, row.units_taken, row.dst_institution,
-                          row.dst_designation, row.dst_course_id, row.dst_offer_nbr,
-                          row.dst_subject, dst_catalog_nbr, row.dst_grade, row.dst_gpa)
-          if values_added is None:
-            values_tuple += (row.user_id, row.reject_reason,
-                             row.transfer_overridden == 'Y', row.override_reason,
-                             row.comment)
-          else:
-            values_tuple += values_added
-          # print(values_tuple, file=debug)
-          try:
-            trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
-                                 values_tuple)
-          except IndexError as ie:
-            print('Altered situation', file=debug)
-            print(cols.count(',') + 1, cols, file=debug)
-            print(placeholders.count('s'), placeholders, file=debug)
-            print(len(values_tuple), values_tuple, file=debug)
-            exit()
-          if (max_post_added is None) or (posted_date > max_post_added):
-            max_post_added = posted_date
-          num_alt[row.dst_institution] += 1
-          num_changed += 1
-
-      else:
-        # Anomaly: mustiple records already exist
-        #   It could be that the source course is repeatable, in which case we would need to
-        #   deterimine which record to replace, for which we don't yet have an algorithm.
-        #   But if the course is not repeatable, it means the student's record was updated twice in
-        #   one day for some reason.
-        # In either case, skip the new data and enter the issue in the debug report.
-        #   Or we could just add the new data to the existing melange.
-        print(f'{trans_cursor.rowcount} existing {row.student_id:8} {row.dst_institution} '
-              f'{int(row.dst_course_id):06}.{row.dst_offer_nbr} {row.dst_subject} '
-              f'{row.dst_catalog_nbr}', file=debug)
         for record in trans_cursor.fetchall():
-          print(f'  {record.student_id:8} {record.src_institution} {record.src_subject} '
-                f'{record.src_catalog_nbr} {record.src_repeatable} => '
-                f'{record.dst_institution} {record.dst_subject} {record.dst_catalog_nbr}',
-                file=debug)
-        print(file=debug)
-        num_mult[row.src_institution] += 1
-        num_skipped += 1
+          # ... be sure this posted date is newer
+          if record.posted_date and (record.posted_date >= posted_date):
+            # Existing record is not older: skip this one, and add to debug file for verification
+            num_debug[(row.src_institution, row.dst_institution)] += 1
+            print(f'*** CF query {the_file}: posted dated is not newer than existing '
+                  f'tranfers_applied posted_date\n',
+                  f'CF row: {line}\nDB record: {[v for v in record]}\n', file=debug)
+            num_already[row.dst_institution] += 1
+            num_skipped += 1
+            continue
+
+          #   has destination course changed?
+          if int(record.dst_course_id) == dst_course_id \
+             and int(record.dst_offer_nbr) == dst_offer_nbr:
+             # Most common case: nothing more to do
+             num_already[row.dst_institution] += 1
+             num_skipped += 1
+          else:
+            # Different destination course: Write the new record to the transfers_changed table
+            #   Determine whether the src course is repeatable or not
+            try:
+              src_repeatable = repeatable[(src_course_id, src_offer_nbr)]
+            except KeyError:
+              curric_cursor.execute(f'select repeatable from cuny_courses where course_id = '
+                                    f'{src_course_id} and offer_nbr = {src_offer_nbr}')
+              if curric_cursor.rowcount != 1:
+                num_miss[row.src_instituion] += 1
+                num_missing += 1
+                trans_cursor.execute(f"insert into missing_courses values({src_course_id}, "
+                                     f"{src_offer_nbr}, '{row.src_institution}', "
+                                     f"'{row.src_subject}', '{row.src_catalog_nbr}') "
+                                     f"on conflict do nothing")
+                src_repeatable = None
+              else:
+                src_repeatable = curric_cursor.fetchone().repeatable
+                repeatable[(int(row.src_course_id), (row.src_offer_nbr))] = src_repeatable
+              # print('values tuple', len(values_tuple), values_tuple)
+            values_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
+                            row.enrollment_term, row.enrollment_session, row.articulation_term,
+                            row.model_status, posted_date, row.src_subject, src_catalog_nbr,
+                            row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
+                            row.src_offer_nbr, src_repeatable, row.src_description,
+                            row.academic_program, row.units_taken, row.dst_institution,
+                            row.dst_designation, row.dst_course_id, row.dst_offer_nbr,
+                            row.dst_subject, dst_catalog_nbr, row.dst_grade, row.dst_gpa)
+            if values_added is None:
+              values_tuple += (row.user_id, row.reject_reason,
+                               row.transfer_overridden == 'Y', row.override_reason,
+                               row.comment)
+            else:
+              values_tuple += values_added
+            # print(values_tuple, file=debug)
+            try:
+              trans_cursor.execute(f'insert into transfers_changed ({cols}) values ({placeholders}) ',
+                                   values_tuple)
+            except IndexError as ie:
+              print('Altered situation', file=debug)
+              print(cols.count(',') + 1, cols, file=debug)
+              print(placeholders.count('s'), placeholders, file=debug)
+              print(len(values_tuple), values_tuple, file=debug)
+              exit()
+            if (max_post_added is None) or (posted_date > max_post_added):
+              max_post_added = posted_date
+            num_alt[row.dst_institution] += 1
+            num_changed += 1
+
 
 if max_post_added is None:
   max_post_added = 'NULL'
@@ -322,7 +298,7 @@ else:
 trans_cursor.execute(f"""
 insert into update_history values(
 DEFAULT, '{file_name}', '{file_date}', {max_post_added},
-          {num_records}, {num_added}, {num_changed}, {num_skipped})
+          {num_records}, {num_added}, {num_changed}, {num_skipped}, {num_missing})
 """)
 
 trans_conn.commit()
