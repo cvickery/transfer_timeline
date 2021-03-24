@@ -81,8 +81,8 @@ primary key (course_id, offer_nbr)
 );
 
 -- Set up the archive table too
-drop table if exists transfers_applied_history cascade;
-create table transfers_applied_history (
+drop table if exists transfers_changed cascade;
+create table transfers_changed (
   id                  serial primary key,
   student_id          integer,
   src_institution     text,
@@ -129,7 +129,8 @@ last_post   date,
 num_records integer,
 num_added   integer,
 num_changed integer,
-num_skipped integer
+num_skipped integer,
+num_missing integer
 );
 
 commit;
@@ -142,6 +143,7 @@ last_post = None
 num_added = 0
 num_changed = 0   # Will not change here.
 num_skipped = 0
+num_missing = 0   # Transfers where sending course is not in course catalog
 
 m = 0
 num_records = len(open(latest, newline=None, errors='replace').readlines())
@@ -200,6 +202,7 @@ with open(latest, newline=None, errors='replace') as csvfile:
         curric_cursor.execute(f'select repeatable from cuny_courses where course_id = '
                               f'{src_course_id} and offer_nbr = {src_offer_nbr}')
         if curric_cursor.rowcount != 1:
+          num_missing += 1
           trans_cursor.execute(f"insert into missing_courses values({src_course_id}, "
                                f"{src_offer_nbr}, '{row.src_institution}', '{row.src_subject}', "
                                f"'{row.src_catalog_nbr}') on conflict do nothing")
@@ -230,7 +233,7 @@ with open(latest, newline=None, errors='replace') as csvfile:
 trans_cursor.execute(f"""
 insert into update_history values(
 DEFAULT, '{file_name}', '{file_date}', '{last_post}',
-          {num_records}, {num_added}, {num_changed}, {num_skipped})
+          {num_records}, {num_added}, {num_changed}, {num_skipped}, {num_missing})
 """)
 
 trans_conn.commit()
