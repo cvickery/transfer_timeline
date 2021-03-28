@@ -295,11 +295,18 @@ if max_post_added is None:
 else:
   max_post_added = f"'{max_post_added}'"
 
-trans_cursor.execute(f"""
-insert into update_history values(
-DEFAULT, '{file_name}', '{file_date}', {max_post_added},
+if (num_added + num_changed + num_skipped) != 0:
+  trans_cursor.execute(f"""
+  insert into update_history values(
+            '{file_name}', '{file_date}', {max_post_added},
+            {num_records}, {num_added}, {num_changed}, {num_skipped}, {num_missing})
+            on conflict do nothing
+  """)
+  if trans_cursor.rowcount == 0:
+    print(f"""Update History conflict\n new:
+          '{file_name}', '{file_date}', {max_post_added},
           {num_records}, {num_added}, {num_changed}, {num_skipped}, {num_missing})
-""")
+          """, file=sys.stderr)
 
 trans_conn.commit()
 trans_conn.close()

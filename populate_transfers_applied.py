@@ -122,8 +122,7 @@ create table transfers_changed (
 drop table if exists update_history;
 
 create table update_history (
-id          serial primary key,
-file_name   text,
+file_name   text primary key,
 file_date   date,
 last_post   date,
 num_records integer,
