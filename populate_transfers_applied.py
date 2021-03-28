@@ -231,7 +231,7 @@ with open(latest, newline=None, errors='replace') as csvfile:
 
 trans_cursor.execute(f"""
 insert into update_history values(
-DEFAULT, '{file_name}', '{file_date}', '{last_post}',
+          '{file_name}', '{file_date}', '{last_post}',
           {num_records}, {num_added}, {num_changed}, {num_skipped}, {num_missing})
 """)
 
