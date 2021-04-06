@@ -73,18 +73,15 @@ num_skipped = 0
 # Cache of repeatable courses found
 repeatable = dict()
 
-# Anything posted before the latest in our DB is ignored
+# Anything posted before the latest posted_date in our DB will be skipped
 max_post_added = None
 trans_cursor.execute('select max(last_post) from update_history')
 max_posted_date = trans_cursor.fetchone().max
 if max_posted_date is None:
-  # Nothing in the update history yet, get the max posted_date from the transfers_applied file
-  # trans_cursor.execute('select max(posted_date) from transfers_applied')
-  # max_posted_date = trans_cursor.fetchone().max
   sys.exit('No last posted date in history table')
 max_posted_date_str = max_posted_date.strftime('%Y-%m-%d')
 
-print(f"Using only transactions posted after {max_posted_date_str}.")
+print(f"Skipping transactions posted before {max_posted_date_str}.")
 
 # Progress indicators
 m = 0
@@ -129,13 +126,10 @@ with open(the_file, encoding='ascii', errors='backslashreplace') as csv_file:
       else:
         posted_date = None
 
-      # Ignore old records
-      if posted_date and posted_date <= max_posted_date:
-        num_old[row.dst_institution] += 1
+      # Ignore old records and ones with no posted_date
+      if not posted_date or (posted_date <= max_posted_date):
         num_skipped += 1
-        posted_date_str = posted_date.strftime('%Y-%m-%d')
-        print(f'Line {m:6}: posted {posted_date_str} <= max_posted {max_posted_date_str}',
-              file=debug)
+        num_old[row.dst_institution] += 1
         continue
 
       # yr = 1900 + 100 * int(row.enrollment_term[0]) + int(row.enrollment_term[1:3])
@@ -154,18 +148,18 @@ with open(the_file, encoding='ascii', errors='backslashreplace') as csv_file:
       dst_offer_nbr = int(row.dst_offer_nbr)
       dst_catalog_nbr = row.dst_catalog_nbr.strip()
 
-      """ Categorize the row
-            {student_id, src_institution, src_course_id, src_offer_nbr, dst_institution} is new:
-              Increment num_new
-              Add the record to transfers_applied
-            Record exists with no change
-              Increment num_already
-              Ignore
-            The destination course has changed
-              Increment num_alt
-              Add current row from transfers_applied to transfer_applied_history
-              Add the new record to transfers_applied
       """
+      Categorize the row
+        {student_id, src_institution, src_course_id, src_offer_nbr, dst_institution} is new:
+          Increment num_new
+          Add the record to transfers_applied
+        Record exists with no change
+          Increment num_already
+          Ignore
+        The destination course has changed
+          Increment num_alt
+          Add current row from transfers_applied to transfer_applied_history
+          Add the new record to transfers_applied """
 
       # Look up existing transfers_applied record
       trans_cursor.execute(f"""
@@ -188,6 +182,7 @@ select * from transfers_applied
             trans_cursor.execute(f"insert into missing_courses values({src_course_id}, "
                                  f"{src_offer_nbr}, '{row.src_institution}', '{row.src_subject}', "
                                  f"'{row.src_catalog_nbr}') on conflict do nothing")
+            num_missing += 1
             src_repeatable = None
           else:
             src_repeatable = curric_cursor.fetchone().repeatable
@@ -227,7 +222,7 @@ select * from transfers_applied
           if record.posted_date and (record.posted_date >= posted_date):
             # Existing record is not older: skip this one, and add to debug file for verification
             num_debug[(row.src_institution, row.dst_institution)] += 1
-            print(f'*** CF query {the_file}: posted dated is not newer than existing '
+            print(f'*** CF query {the_file}: posted date is not newer than existing '
                   f'tranfers_applied posted_date\n',
                   f'CF row: {line}\nDB record: {[v for v in record]}\n', file=debug)
             num_already[row.dst_institution] += 1

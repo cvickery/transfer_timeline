@@ -145,8 +145,8 @@ num_skipped = 0
 num_missing = 0   # Transfers where sending course is not in course catalog
 
 m = 0
-num_records = len(open(latest, newline=None, errors='replace').readlines())
-with open(latest, newline=None, errors='replace') as csvfile:
+num_records = len(open(latest, newline=None, errors='backslashreplace').readlines())
+with open(latest, newline=None, errors='backslashreplace') as csvfile:
   reader = csv.reader(csvfile, )
   for line in reader:
 
