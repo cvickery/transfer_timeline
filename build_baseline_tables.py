@@ -28,7 +28,7 @@ session_table_file = None
 for file in session_table_files:
   if session_table_file is None or file.stat().st_mtime > session_table_file.stat().st_mtime:
     session_table_file = file
-print(f'Session Table: {session_table_file}')
+print(f'Session Table: {session_table_file}', file=sys.stderr)
 
 # Admissions
 admissions_table_files = Path('./Admissions_Registrations').glob('*ADMISSIONS*')
@@ -36,7 +36,7 @@ admissions_table_file = None
 for file in admissions_table_files:
   if admissions_table_file is None or file.stat().st_mtime > admissions_table_file.stat().st_mtime:
     admissions_table_file = file
-print(f'Admissions: {admissions_table_file}')
+print(f'Admissions: {admissions_table_file}', file=sys.stderr)
 
 # Registrations
 registrations_table_files = Path('./Admissions_Registrations').glob('*STUDENT*')
@@ -45,7 +45,7 @@ for file in registrations_table_files:
   if (registrations_table_file is None
      or file.stat().st_mtime > registrations_table_file.stat().st_mtime):
     registrations_table_file = file
-print(f'Registrations: {registrations_table_file}')
+print(f'Registrations: {registrations_table_file}', file=sys.stderr)
 
 
 # Sessions Cache
@@ -116,12 +116,13 @@ insert into sessions values (%s, %s, %s, %s, %s, %s, %s, %s)
 trans_conn.commit()
 
 
-# Admissions Cache
+# Admissions Table
 # -------------------------------------------------------------------------------------------------
 admittees = defaultdict(dict)
 Admittee_Key = namedtuple('Admittee_key',
                           'student_id application_number institution admit_term, requirement_term')
-Admission_Event = namedtuple('Admission_Event', 'action_date effective_date')
+Admission_Event = namedtuple('Admission_Event',
+                             'admit_type action_date effective_date')
 """
     "ID","Career","Career Nbr","Appl Nbr","Prog Nbr","Institution","Acad Prog","Status","Eff
     Date","Effective Sequence","Program Action","Action Date","Action Reason","Admit Term","Expected
@@ -162,8 +163,8 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
           print(f'Admittee Date situation: {row}\n', file=debug)
           continue
         admittees[admittee_key][row.program_action] = \
-            Admission_Event._make([action_date, effective_date])
-print(f'{len(admittees.keys())} Admittees')
+            Admission_Event._make([row.admit_type, action_date, effective_date])
+print(f'{len(admittees.keys())} Admittees', file=sys.stderr)
 
 trans_cursor.execute("""
 drop table if exists admissions;
@@ -174,6 +175,7 @@ institution text,
 admit_term int,
 requirement_term int,
 event_type text,
+admit_type text,
 action_date date,
 effective_date date,
 primary key (student_id, application_number, institution, admit_term, requirement_term, event_type)
@@ -182,10 +184,12 @@ primary key (student_id, application_number, institution, admit_term, requiremen
 for key in admittees.keys():
   for event_type in admittees[key].keys():
     trans_cursor.execute(f"""
-insert into admissions values (%s, %s, %s, %s, %s, %s, %s, %s)
+insert into admissions values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
 on conflict do nothing;
 """, (key.student_id, key.application_number, key.institution, key.admit_term, key.requirement_term,
-      event_type, admittees[key][event_type].action_date,
+      event_type,
+      admittees[key][event_type].admit_type,
+      admittees[key][event_type].action_date,
       admittees[key][event_type].effective_date))
     if trans_cursor.rowcount == 0:
       print(f'Admissions Data situation: {trans_cursor.query.decode()}', file=debug)
