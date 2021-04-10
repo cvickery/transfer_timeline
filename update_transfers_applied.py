@@ -244,7 +244,7 @@ select * from transfers_applied
               curric_cursor.execute(f'select repeatable from cuny_courses where course_id = '
                                     f'{src_course_id} and offer_nbr = {src_offer_nbr}')
               if curric_cursor.rowcount != 1:
-                num_miss[row.src_instituion] += 1
+                num_miss[row.src_institution] += 1
                 num_missing += 1
                 trans_cursor.execute(f"insert into missing_courses values({src_course_id}, "
                                      f"{src_offer_nbr}, '{row.src_institution}', "
