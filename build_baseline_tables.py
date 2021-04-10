@@ -151,9 +151,10 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
         admittee_key = Admittee_Key._make([int(row.id), int(row.appl_nbr), row.institution[0:3],
                                           admit_term, requirement_term])
       except ValueError as ve:
-        # print(f'Admittee Key situation: {row}') # Only one bogus role found.
+        print(f'Admittee Key situation: {row}')
         continue
-      if row.program_action in ['APPL', 'ADMT', 'DEIN', 'MATR']:
+      if row.program_action in ['APPL', 'ADMT', 'DEIN', 'MATR'] \
+         and row.admit_type in ['TRN', 'TRD']:
         try:
           m, d, y = row.action_date.split('/')
           action_date = datetime.date(int(y), int(m), int(d))
