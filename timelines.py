@@ -71,6 +71,7 @@ student_events = defaultdict(dict)
 # debug single query.
 
 # Admission Events
+print('Lookup Admission Events', file=sys.stderr)
 AdmissionEvent = namedtuple('AdmissionEvent', 'action_date effective_date')
 for cohort_key in cohort:
   cursor.execute(f"""
@@ -85,6 +86,7 @@ for cohort_key in cohort:
                                                                        row.effective_date])
 
 # Transfer Evaluations
+print('Lookup Evaluations', file=sys.stderr)
 EvaluationEvent = namedtuple('EvaluationEvent', 'src_institution posted_date')
 for cohort_key in cohort:
   cursor.execute(f"""
@@ -110,8 +112,11 @@ group by src_institution, posted_date,
                       for row in cursor.fetchall()]
   student_events[cohort_key]['evaluations'] = evaluation_list
 
+# Generate CSV
+print('Generate CSV Report', file=sys.stderr)
 with open(f'./reports/{institution}_{semester.replace(", ", "_")}.csv', 'w') as report:
-  print('Student, Term, College, Apply, Admit, Matric, Evals', file=report)
+  print('Student, Term, College, Apply, Admit, Matric, Eval_Dates, Sending, First_Enroll',
+        file=report)
   for cohort_key in cohort:
     print(f'{cohort_key.student_id:08}, {cohort_key.admit_term}, {cohort_key.institution}',
           end='', file=report)
@@ -127,6 +132,7 @@ with open(f'./reports/{institution}_{semester.replace(", ", "_")}.csv', 'w') as 
       matr_date = student_events[cohort_key]['MATR'].action_date.isoformat()
     else:
       matr_date = '--'
+    # NEED SETS of DATES and SENDING COLLEGES #
     evals = 'None'
     if len(student_events[cohort_key]['evaluations']) > 0:
       evals = []

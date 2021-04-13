@@ -165,7 +165,7 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
           continue
         admittees[admittee_key][row.program_action] = \
             Admission_Event._make([row.admit_type, action_date, effective_date])
-print(f'{len(admittees.keys())} Admittees', file=sys.stderr)
+print(f'{len(admittees.keys()):,} Admittees', file=sys.stderr)
 
 trans_cursor.execute("""
 drop table if exists admissions;
@@ -230,6 +230,7 @@ Registration_Key = namedtuple('Registration_Key', 'student_id institution term')
 registration_events = defaultdict(registration_factory)
 m = 0
 n = len(open(registrations_table_file, encoding='ascii', errors='backslashreplace').readlines()) - 1
+print('Read Registrations', file=sys.stderr)
 with open(registrations_table_file, encoding='ascii', errors='backslashreplace') as rtf:
   registrations_reader = csv.reader(rtf)
   for line in registrations_reader:
@@ -237,7 +238,7 @@ with open(registrations_table_file, encoding='ascii', errors='backslashreplace')
       Row = namedtuple('Row', [col.lower().replace(' ', '_').replace('-', '_') for col in line])
     else:
       m += 1
-      print(f'{m:6,} / {n:,}', file=sys.stderr)
+      print(f  '{m:6,} / {n:,}\r', end='', file=sys.stderr)
       row = Row._make(line)
       term = int(row.term)
       if row.career != 'UGRD' or term < 1199 or row.session != '1':
@@ -261,6 +262,9 @@ with open(registrations_table_file, encoding='ascii', errors='backslashreplace')
       if changed:
         registration_events[registration_key] = {'first_registration_date': first,
                                                  'last_registration_date': last}
+
+print('\rBuild registrations table', file=sys.stderr)
+
 trans_cursor.execute("""
 drop table if exists registrations;
 create table registrations (
