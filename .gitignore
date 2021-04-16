@@ -4,3 +4,7 @@
 *.txt
 *.csv
 /debugs/
+/logs/
+/debug
+/out
+/skipped
