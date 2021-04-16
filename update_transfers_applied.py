@@ -43,26 +43,24 @@ if the_file is None:
 file_date = datetime.datetime.fromtimestamp(the_file.stat().st_mtime)
 file_name = the_file.name
 
-print('Using:', the_file,
-      file_date.strftime('%B %d, %Y'),
-      file=sys.stderr)
-iso_file_date = file_date.strftime('%Y-%m-%d')
+print('Using:', file_name, file_date.strftime('%B %d, %Y'), file=sys.stderr)
+iso_file_date = file_date.isoformat()
 debug = open(f'./debugs/{iso_file_date}', 'w')
 print(file_name, file=debug)
 
-# Record types, indexed by dst_institution
+# Record types, to be indexed by dst_institution
 num_new = defaultdict(int)      # never before seen
 num_alt = defaultdict(int)      # real changes
 num_old = defaultdict(int)      # posted date <= max already in db
 num_already = defaultdict(int)  # new data, but duplicates existing
 
-# Multiple existing records, indexed by src_institution
+# Counts of multiple existing records, to be indexed by src_institution
 num_mult = defaultdict(int)
 
 # Miscellaneous anomalies, indexed by src_institution, dst_institution
 num_debug = defaultdict(int)
 
-# Data for the update_history table
+# Latest posted date, and counts for the update_history table
 last_post = None
 num_added = 0
 num_changed = 0
@@ -80,15 +78,16 @@ curric_cursor.execute("""select course_id, offer_nbr
                        where attributes ~* 'BKCR'""")
 blankets = [(int(row.course_id), int(row.offer_nbr)) for row in curric_cursor.fetchall()]
 
-# Anything posted before the latest posted_date in our DB will be skipped
+# Skip anything already in the db, based on posted_dates
 max_newly_posted_date = None
 trans_cursor.execute('select max(last_post) from update_history')
-max_posted_date = trans_cursor.fetchone().max
-if max_posted_date is None:
-  sys.exit('No last posted date in history table')
-max_posted_date_str = max_posted_date.strftime('%Y-%m-%d')
+min_new_posted_date = trans_cursor.fetchone().max
+if min_new_posted_date is None:
+  sys.exit('No max posted date in history table')
+min_new_posted_date = min_new_posted_date + datetime.timedelta(days=1)
+min_new_posted_date_str = min_new_posted_date.isoformat()
 
-print(f"Skipping transactions posted before {max_posted_date_str}.")
+print(f"Skipping transactions posted before {min_new_posted_date_str}.")
 
 # Progress indicators
 m = 0
@@ -123,10 +122,12 @@ with open(the_file, encoding='ascii', errors='backslashreplace') as csv_file:
         mo, da, yr = [int(x) for x in line[-1].split('/')]
         file_date = datetime.datetime(yr, mo, da)
 
-      assert m == num_added + num_changed + num_skipped, f'{m} != {num_added}+{num_changed}+{num_skipped}'
+      assert m == num_added + num_changed + num_skipped, (f'{m} != {num_added}+{num_changed}+'
+                                                          f'{num_skipped}')
       m += 1
       if progress:
         print(f'  {m:06,}/{num_records:06,}\r', end='', file=sys.stderr)
+
       row = Row._make(line)
 
       if '/' in row.posted_date:
@@ -136,7 +137,7 @@ with open(the_file, encoding='ascii', errors='backslashreplace') as csv_file:
         posted_date = None
 
       # Ignore old records and ones with no posted_date
-      if not posted_date or (posted_date <= max_posted_date):
+      if not posted_date or (posted_date < min_new_posted_date):
         num_old[row.dst_institution] += 1
         num_skipped += 1
         continue
@@ -153,7 +154,7 @@ with open(the_file, encoding='ascii', errors='backslashreplace') as csv_file:
       dst_is_mesg = (dst_course_id, dst_offer_nbr) in messages
       dst_is_bkcr = (dst_course_id, dst_offer_nbr) in blankets
 
-      # Look up existing transfers_applied record
+      # Look up existing transfers_applied record(s)
       trans_cursor.execute(f"""
 select * from transfers_applied
  where student_id = {row.student_id}
@@ -178,81 +179,103 @@ select * from transfers_applied
         else:
           values_tuple += values_added
 
-        try:
-          trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
-                               values_tuple)
-        except IndexError as ie:
-          print('New situation', file=debug)
-          print(cols.count(',') + 1, cols, file=debug)
-          print(placeholders.count('s'), placeholders, file=debug)
-          print(len(values_tuple), values_tuple, file=debug)
-          exit()
+        trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) ',
+                             values_tuple)
+
         num_new[row.dst_institution] += 1
         num_added += 1
 
       else:
-        if trans_cursor.rowcount != 1:
-          print(f'{trans_cursor.rowcount} records for {row.student_id}, {src_course_id:06}:'
-                f'{src_offer_nbr} -> 'f'{row.dst_institution}', file=debug)
+        # A single sending course can transfer as multiple receiving courses, for example when a
+        # BKCR course is used to fill out credits transferred. So we really want to coalesce the
+        # cases into a single record in the db.
 
-          num_mult[row.dst_institution] += 1
-          num_skipped += 1
-          continue
+        # Debug: look up credit info for the courses in this record
+        curric_cursor.execute(f"""
+    select course_id, offer_nbr, min_credits, max_credits
+      from cuny_courses
+     where course_id in {src_course_id, dst_course_id}
+  """)
+        credit_info = {(c.course_id, c.offer_nbr): (c.min_credits, c.max_credits)
+                       for c in curric_cursor.fetchall()}
+        try:
+          new_src_cr = credit_info[(src_course_id, src_offer_nbr)]
+          new_dst_cr = credit_info[(dst_course_id, dst_offer_nbr)]
+        except KeyError as ke:
+          print(ke, 'Credit lookup failure')
+        print(f'src: {src_course_id:06}:{src_offer_nbr} {new_src_cr} {src_repeatable} '
+              f'dst: {dst_course_id:06}:{dst_offer_nbr} {new_dst_cr} {dst_is_mesg} {dst_is_bkcr}')
 
-        # This course has alread been fetched; add this one to transfers_changed
-        # ----------------------------------------------------------------------
-        record = trans_cursor.fetchone()
-        # Be sure this posted date is newer
-        if record.posted_date and (record.posted_date >= posted_date):
-          # Existing record is not older: skip this one, and add to debug file for verification
-          num_debug[(row.src_institution, row.dst_institution)] += 1
-          print(f'*** CF query {the_file}: posted date is not newer than existing '
-                f'tranfers_applied posted_date\n',
-                f'CF row: {line}\nDB record: {[v for v in record]}\n', file=debug)
+        for record in trans_cursor.fetchall():
+          if record.posted_date and not (record.posted_date < posted_date):
+            # Existing record is not older: skip this one, and add to debug file for verification
+            # Maybe the record was backdated for some reason?
+            num_debug[(row.src_institution, row.dst_institution)] += 1
+            print(f'*** CF query {the_file}: posted date is not newer than existing '
+                  f'tranfers_applied posted_date\n',
+                  f'CF row: {line}\nDB record: {[v for v in record]}\n', file=debug)
 
-          num_already[row.dst_institution] += 1
-          num_skipped += 1
-          continue
+            num_already[row.dst_institution] += 1
+            num_skipped += 1
+            continue
 
-        # Has destination course changed?
-        if int(record.dst_course_id) == dst_course_id \
-           and int(record.dst_offer_nbr) == dst_offer_nbr:
-           # Most common case: nothing more to do
+          # Debug: show credits , repeatable, is_message, is_bkcr for existing and new src/dst
+          old_dst_course_id = int(row.dst_course_id)
+          old_dst_offer_nbr = int(row.dst_offer_nbr)
+          curric_cursor.execute(f"""
+    select course_id, offer_nbr, min_credits, max_credits
+      from cuny_courses
+     where course_id = {old_dst_course_id}
+       and offer_nbr = {old_dst_offer_nbr}
+""")
+          old_cr = [(c.min_credits, c.max_credits) for c in curric_cursor.fetchall()]
+          old_mesg = (old_dst_course_id, old_dst_offer_nbr) in messages
+          old_bkcr = (old_dst_course_id, old_dst_offer_nbr) in blankets
+          print(f'old: {old_dst_course_id:06}:{old_dst_offer_nbr} {old_cr} {old_mesg} {old_bkcr}')
 
-           num_already[row.dst_institution] += 1
-           num_skipped += 1
-        else:
-          # Different destination course: Write the new record to the transfers_changed table
-          values_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
-                          row.enrollment_term, row.enrollment_session, row.articulation_term,
-                          row.model_status, posted_date, row.src_subject, src_catalog_nbr,
-                          row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
-                          row.src_offer_nbr, src_repeatable, row.src_description,
-                          row.academic_program, row.units_taken, row.dst_institution,
-                          row.dst_designation, row.dst_course_id, row.dst_offer_nbr,
-                          row.dst_subject, dst_catalog_nbr, row.dst_grade, row.dst_gpa,
-                          dst_is_mesg, dst_is_bkcr)
-          if values_added is None:
-            values_tuple += (row.user_id, row.reject_reason,
-                             row.transfer_overridden == 'Y', row.override_reason,
-                             row.comment)
+          # Has destination course changed?
+          if int(record.dst_course_id) == dst_course_id \
+             and int(record.dst_offer_nbr) == dst_offer_nbr:
+             # Most common case: nothing more to do
+             num_already[row.dst_institution] += 1
+             num_skipped += 1
+
           else:
-            values_tuple += values_added
+            # Different destination course: Write the new record to the transfers_changed table
+            values_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
+                            row.enrollment_term, row.enrollment_session, row.articulation_term,
+                            row.model_status, posted_date, row.src_subject, src_catalog_nbr,
+                            row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
+                            row.src_offer_nbr, src_repeatable, row.src_description,
+                            row.academic_program, row.units_taken, row.dst_institution,
+                            row.dst_designation, row.dst_course_id, row.dst_offer_nbr,
+                            row.dst_subject, dst_catalog_nbr, row.dst_grade, row.dst_gpa,
+                            dst_is_mesg, dst_is_bkcr)
+            if values_added is None:
+              values_tuple += (row.user_id, row.reject_reason,
+                               row.transfer_overridden == 'Y', row.override_reason,
+                               row.comment)
+            else:
+              values_tuple += values_added
 
-          trans_cursor.execute(f'insert into transfers_changed ({cols}) values ({placeholders}) ',
-                               values_tuple)
+            trans_cursor.execute(f'insert into transfers_changed ({cols}) values ({placeholders}) ',
+                                 values_tuple)
 
-          num_alt[row.dst_institution] += 1
-          num_changed += 1
+            num_alt[row.dst_institution] += 1
+            num_changed += 1
 
-      if (max_newly_posted_date is None) or (posted_date > max_newly_posted_date):
-        max_newly_posted_date = posted_date
+        if (max_newly_posted_date is None) or (posted_date > max_newly_posted_date):
+          max_newly_posted_date = posted_date
 
 # Prepare summary info
 if max_newly_posted_date is None:
   max_newly_posted_date = 'NULL'
 else:
   max_newly_posted_date = f"'{max_newly_posted_date}'"
+
+uncounted = num_records - num_added - num_changed - num_skipped
+print(f'{file_name[-16:-4]}: {m=} {num_records=} {num_added=} {num_changed=} {num_skipped=} '
+      f'{uncounted=}', file=debug)
 
 if (num_added + num_changed + num_skipped) != 0:
   trans_cursor.execute(f"""

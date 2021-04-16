@@ -68,7 +68,8 @@ create table transfers_applied (
   transfer_overridden boolean default false,
   override_reason     text not NULL,
   comment             text not NULL,
-  constraint single unique (student_id, src_course_id, src_offer_nbr, dst_institution, posted_date)
+  constraint single unique (student_id, src_course_id, src_offer_nbr, dst_institution,
+                            dst_course_id, posted_date)
 );
 
 drop table if exists missing_courses cascade;
@@ -237,6 +238,7 @@ with open(latest, newline=None, errors='backslashreplace') as csvfile:
       if trans_cursor.rowcount == 1:
         num_added += 1
       else:
+        print(f'Skipped {value_tuple}')
         num_skipped += 1
 
 # Update the update_history table
