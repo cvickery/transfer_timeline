@@ -203,8 +203,8 @@ select * from transfers_applied
           new_dst_cr = credit_info[(dst_course_id, dst_offer_nbr)]
         except KeyError as ke:
           print(ke, 'Credit lookup failure')
-        print(f'src: {src_course_id:06}:{src_offer_nbr} {new_src_cr} {src_repeatable} '
-              f'dst: {dst_course_id:06}:{dst_offer_nbr} {new_dst_cr} {dst_is_mesg} {dst_is_bkcr}')
+        # print(f'src: {src_course_id:06}:{src_offer_nbr} {new_src_cr} {src_repeatable} '
+        #       f'dst: {dst_course_id:06}:{dst_offer_nbr} {new_dst_cr} {dst_is_mesg} {dst_is_bkcr}')
 
         for record in trans_cursor.fetchall():
           if record.posted_date and not (record.posted_date < posted_date):
@@ -231,7 +231,7 @@ select * from transfers_applied
           old_cr = [(c.min_credits, c.max_credits) for c in curric_cursor.fetchall()]
           old_mesg = (old_dst_course_id, old_dst_offer_nbr) in messages
           old_bkcr = (old_dst_course_id, old_dst_offer_nbr) in blankets
-          print(f'old: {old_dst_course_id:06}:{old_dst_offer_nbr} {old_cr} {old_mesg} {old_bkcr}')
+          # print(f'old: {old_dst_course_id:06}:{old_dst_offer_nbr} {old_cr} {old_mesg} {old_bkcr}')
 
           # Has destination course changed?
           if int(record.dst_course_id) == dst_course_id \

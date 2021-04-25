@@ -15,10 +15,10 @@ for possible in possibles:
 if latest is None:
   sys.exit('No population source found.')
 
-print('You are about to overwrite years of intense effort. Repent or Proceed? (R/p) ',
+print('I advise you not to do this. Repent, or Proceed anyway? (R/p) ',
       end='', file=sys.stderr)
 if not input().lower().startswith('p'):
-  sys.exit('Ill-advised consequences averted.')
+  sys.exit('Ill-advised consequences averted!')
 
 repeatable = dict()
 

@@ -1,4 +1,5 @@
-/downloads/
+/downloads/*.csv
+/Admissions_Registrations/*.csv
 /.DS_Store
 /reports/
 *.txt
