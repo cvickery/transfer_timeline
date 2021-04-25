@@ -17,7 +17,9 @@ if latest is None:
 
 print('I advise you not to do this. Repent, or Proceed anyway? (R/p) ',
       end='', file=sys.stderr)
-if not input().lower().startswith('p'):
+if input().lower().startswith('p'):
+  print('Don’t say you weren’t warned!', file=sys.stderr)
+else:
   sys.exit('Ill-advised consequences averted!')
 
 repeatable = dict()
@@ -162,91 +164,92 @@ num_skipped = 0
 
 m = 0
 num_records = len(open(latest, newline=None, errors='backslashreplace').readlines())
-with open(latest, newline=None, errors='backslashreplace') as csvfile:
-  reader = csv.reader(csvfile, )
-  for line in reader:
+with open('./populate.log', 'w') as logfile:
+  with open(latest, newline=None, errors='backslashreplace') as csvfile:
+    reader = csv.reader(csvfile, )
+    for line in reader:
 
-    if reader.line_num == 1:
-      headers = [h.lower().replace(' ', '_') for h in line]
-      cols = [h for h in headers]
+      if reader.line_num == 1:
+        headers = [h.lower().replace(' ', '_') for h in line]
+        cols = [h for h in headers]
 
-      # Adjust for columns not present in queries prior to 2021-03-18
-      if 'comment' not in cols:
-        cols += ['user_id', 'reject_reason', 'transfer_overridden', 'override_reason', 'comment']
-        values_added = ('00000000', '', False, '', '')
+        # Adjust for columns not present in queries prior to 2021-03-18
+        if 'comment' not in cols:
+          cols += ['user_id', 'reject_reason', 'transfer_overridden', 'override_reason', 'comment']
+          values_added = ('00000000', '', False, '', '')
+        else:
+          cols.remove('sysdate')
+          values_added = None
+
+        # columns {src_repeatable, dst_is_message, dst_is_blanket} from CF catalog (cached above).
+        cols.insert(1 + cols.index('src_offer_nbr'), 'src_repeatable')
+        cols.insert(1 + cols.index('dst_gpa'), 'dst_is_message')
+        cols.insert(1 + cols.index('dst_is_message'), 'dst_is_blanket')
+
+        placeholders = ((len(cols)) * '%s,').strip(', ')
+        cols = ', '.join([c for c in cols])
+        Row = namedtuple('Row', headers)
+
       else:
-        cols.remove('sysdate')
-        values_added = None
+        m += 1
+        print(f'  {m:06,}/{num_records:06,}\r', end='', file=sys.stderr)
+        row = Row._make(line)
 
-      # columns {src_repeatable, dst_is_message, dst_is_blanket} from CF catalog (cached above).
-      cols.insert(1 + cols.index('src_offer_nbr'), 'src_repeatable')
-      cols.insert(1 + cols.index('dst_gpa'), 'dst_is_message')
-      cols.insert(1 + cols.index('dst_is_message'), 'dst_is_blanket')
+        # yr = 1900 + 100 * int(row.enrollment_term[0]) + int(row.enrollment_term[1:3])
+        # mo = int(row.enrollment_term[-1])
+        # da = 1
+        # enrollment_term = datetime.date(yr, mo, da)
 
-      placeholders = ((len(cols)) * '%s,').strip(', ')
-      cols = ', '.join([c for c in cols])
-      Row = namedtuple('Row', headers)
+        # yr = 1900 + 100 * int(row.articulation_term[0]) + int(row.articulation_term[1:3])
+        # mo = int(row.articulation_term[-1])
+        # articulation_term = datetime.date(yr, mo, da)
 
-    else:
-      m += 1
-      print(f'  {m:06,}/{num_records:06,}\r', end='', file=sys.stderr)
-      row = Row._make(line)
+        if '/' in row.posted_date:
+          mo, da, yr = row.posted_date.split('/')
+          posted_date = datetime.date(int(yr), int(mo), int(da))
+          if last_post is None or last_post < posted_date:
+            last_post = posted_date
+        else:
+          posted_date = None
 
-      # yr = 1900 + 100 * int(row.enrollment_term[0]) + int(row.enrollment_term[1:3])
-      # mo = int(row.enrollment_term[-1])
-      # da = 1
-      # enrollment_term = datetime.date(yr, mo, da)
+        src_course_id = int(row.src_course_id)
+        src_offer_nbr = int(row.src_offer_nbr)
+        src_catalog_nbr = row.src_catalog_nbr.strip()
+        dst_course_id = int(row.dst_course_id)
+        dst_offer_nbr = int(row.dst_offer_nbr)
+        dst_catalog_nbr = row.dst_catalog_nbr.strip()
 
-      # yr = 1900 + 100 * int(row.articulation_term[0]) + int(row.articulation_term[1:3])
-      # mo = int(row.articulation_term[-1])
-      # articulation_term = datetime.date(yr, mo, da)
+        # Is the src course is repeatable; is dst course is MESG or BKCR
+        src_repeatable = (src_course_id, src_offer_nbr) in repeatable
+        dst_is_mesg = (dst_course_id, dst_offer_nbr) in messages
+        dst_is_bkcr = (dst_course_id, dst_offer_nbr) in blankets
 
-      if '/' in row.posted_date:
-        mo, da, yr = row.posted_date.split('/')
-        posted_date = datetime.date(int(yr), int(mo), int(da))
-        if last_post is None or last_post < posted_date:
-          last_post = posted_date
-      else:
-        posted_date = None
+        value_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
+                       row.enrollment_term, row.enrollment_session, row.articulation_term,
+                       row.model_status, posted_date, row.src_subject, src_catalog_nbr,
+                       row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
+                       row.src_offer_nbr, src_repeatable, row.src_description,
+                       row.academic_program, row.units_taken, row.dst_institution,
+                       row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
+                       dst_catalog_nbr, row.dst_grade, row.dst_gpa, dst_is_mesg, dst_is_bkcr)
+        if values_added is not None:
+          value_tuple += values_added
+        # print('values tuple', len(value_tuple), value_tuple)
+        trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) '
+                             f'on conflict do nothing',
+                             value_tuple)
+        if trans_cursor.rowcount == 1:
+          num_added += 1
+        else:
+          print(f'Skipped {value_tuple}', file=logfile)
+          num_skipped += 1
 
-      src_course_id = int(row.src_course_id)
-      src_offer_nbr = int(row.src_offer_nbr)
-      src_catalog_nbr = row.src_catalog_nbr.strip()
-      dst_course_id = int(row.dst_course_id)
-      dst_offer_nbr = int(row.dst_offer_nbr)
-      dst_catalog_nbr = row.dst_catalog_nbr.strip()
-
-      # Is the src course is repeatable; is dst course is MESG or BKCR
-      src_repeatable = (src_course_id, src_offer_nbr) in repeatable
-      dst_is_mesg = (dst_course_id, dst_offer_nbr) in messages
-      dst_is_bkcr = (dst_course_id, dst_offer_nbr) in blankets
-
-      value_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
-                     row.enrollment_term, row.enrollment_session, row.articulation_term,
-                     row.model_status, posted_date, row.src_subject, src_catalog_nbr,
-                     row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
-                     row.src_offer_nbr, src_repeatable, row.src_description,
-                     row.academic_program, row.units_taken, row.dst_institution,
-                     row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
-                     dst_catalog_nbr, row.dst_grade, row.dst_gpa, dst_is_mesg, dst_is_bkcr)
-      if values_added is not None:
-        value_tuple += values_added
-      # print('values tuple', len(value_tuple), value_tuple)
-      trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) '
-                           f'on conflict do nothing',
-                           value_tuple)
-      if trans_cursor.rowcount == 1:
-        num_added += 1
-      else:
-        print(f'Skipped {value_tuple}')
-        num_skipped += 1
-
-# Update the update_history table
-trans_cursor.execute(f"""
-insert into update_history values(
-          '{file_name}', '{file_date}', '{last_post}',
-          {num_records}, {num_added}, {num_changed}, {num_skipped})
-""")
+  # Update the update_history table
+  trans_cursor.execute(f"""
+  insert into update_history values(
+            '{file_name}', '{file_date}', '{last_post}',
+            {num_records}, {num_added}, {num_changed}, {num_skipped})
+  """)
 
 trans_conn.commit()
 exit()
