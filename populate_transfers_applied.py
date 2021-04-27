@@ -51,7 +51,7 @@ create table transfers_applied (
   src_gpa             real not NULL,
   src_course_id       integer not NULL,
   src_offer_nbr       integer not NULL,
-  src_repeatable      boolean not NULL,
+  src_is_repeatable   boolean not NULL,
   src_description     text not NULL,
   academic_program    text not NULL,
   units_taken         real not NULL,
@@ -104,7 +104,7 @@ create table transfers_changed (
   src_gpa             real,
   src_course_id       integer,
   src_offer_nbr       integer,
-  src_repeatable      boolean,
+  src_is_repeatable   boolean,
   src_description     text,
   academic_program    text,
   units_taken         real,
@@ -220,9 +220,9 @@ with open('./populate.log', 'w') as logfile:
         dst_catalog_nbr = row.dst_catalog_nbr.strip()
 
         # Is the src course is repeatable; is dst course is MESG or BKCR
-        src_repeatable = (src_course_id, src_offer_nbr) in repeatable
-        dst_is_mesg = (dst_course_id, dst_offer_nbr) in messages
-        dst_is_bkcr = (dst_course_id, dst_offer_nbr) in blankets
+        src_is_repeatable = (src_course_id, src_offer_nbr) in repeatable
+        dst_is_message = (dst_course_id, dst_offer_nbr) in messages
+        dst_is_blanket = (dst_course_id, dst_offer_nbr) in blankets
 
         value_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
                        row.enrollment_term, row.enrollment_session, row.articulation_term,
@@ -231,7 +231,7 @@ with open('./populate.log', 'w') as logfile:
                        row.src_offer_nbr, src_repeatable, row.src_description,
                        row.academic_program, row.units_taken, row.dst_institution,
                        row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
-                       dst_catalog_nbr, row.dst_grade, row.dst_gpa, dst_is_mesg, dst_is_bkcr)
+                       dst_catalog_nbr, row.dst_grade, row.dst_gpa, dst_is_message, dst_is_blanket)
         if values_added is not None:
           value_tuple += values_added
         # print('values tuple', len(value_tuple), value_tuple)

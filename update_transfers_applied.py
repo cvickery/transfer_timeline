@@ -108,8 +108,8 @@ with open(the_file, encoding='ascii', errors='backslashreplace') as csv_file:
         cols.remove('sysdate')
         values_added = None
 
-      # columns {src_repeatable, dst_is_message, dst_is_blanket} from CF catalog (cached above).
-      cols.insert(1 + cols.index('src_offer_nbr'), 'src_repeatable')
+      # columns {src_is_repeatable, dst_is_message, dst_is_blanket} from CF catalog (cached above).
+      cols.insert(1 + cols.index('src_offer_nbr'), 'src_is_repeatable')
       cols.insert(1 + cols.index('dst_gpa'), 'dst_is_message')
       cols.insert(1 + cols.index('dst_is_message'), 'dst_is_blanket')
 
@@ -117,8 +117,8 @@ with open(the_file, encoding='ascii', errors='backslashreplace') as csv_file:
       cols = ', '.join([c for c in cols])
       Row = namedtuple('Row', headers)
     else:
+      # If SYSDATE is available, substitute it for file_date
       if reader.line_num == 2 and values_added is None:
-        # SYSDATE is available: substitute it for file_date
         mo, da, yr = [int(x) for x in line[-1].split('/')]
         file_date = datetime.datetime(yr, mo, da)
 
@@ -152,9 +152,9 @@ with open(the_file, encoding='ascii', errors='backslashreplace') as csv_file:
       dst_catalog_nbr = row.dst_catalog_nbr.strip()
 
       # Is the src course is repeatable; is dst course is MESG or BKCR
-      src_repeatable = (src_course_id, src_offer_nbr) in repeatables
-      dst_is_mesg = (dst_course_id, dst_offer_nbr) in messages
-      dst_is_bkcr = (dst_course_id, dst_offer_nbr) in blankets
+      src_is_repeatable = (src_course_id, src_offer_nbr) in repeatables
+      dst_is_message = (dst_course_id, dst_offer_nbr) in messages
+      dst_is_blanket = (dst_course_id, dst_offer_nbr) in blankets
 
       # Look up existing transfers_applied record(s)
       trans_cursor.execute(f"""
@@ -171,10 +171,10 @@ select * from transfers_applied
                         row.enrollment_term, row.enrollment_session, row.articulation_term,
                         row.model_status, posted_date, row.src_subject, src_catalog_nbr,
                         row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
-                        row.src_offer_nbr, src_repeatable, row.src_description,
+                        row.src_offer_nbr, src_is_repeatable, row.src_description,
                         row.academic_program, row.units_taken, row.dst_institution,
                         row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
-                        dst_catalog_nbr, row.dst_grade, row.dst_gpa, dst_is_mesg, dst_is_bkcr)
+                        dst_catalog_nbr, row.dst_grade, row.dst_gpa, dst_is_message, dst_is_blanket)
         if values_added is None:
           values_tuple += (row.user_id, row.reject_reason, row.transfer_overridden == 'Y',
                            row.override_reason, row.comment)
@@ -205,8 +205,8 @@ select * from transfers_applied
           new_dst_cr = credit_info[(dst_course_id, dst_offer_nbr)]
         except KeyError as ke:
           print(ke, 'Credit lookup failure', file=debug)
-          print(f'src: {src_course_id:06}:{src_offer_nbr} {new_src_cr} {src_repeatable} '
-                f'dst: {dst_course_id:06}:{dst_offer_nbr} {new_dst_cr} {dst_is_mesg} {dst_is_bkcr}',
+          print(f'src: {src_course_id:06}:{src_offer_nbr} {new_src_cr} {src_is_repeatable} '
+                f'dst: {dst_course_id:06}:{dst_offer_nbr} {new_dst_cr} {dst_is_message} {dst_is_blanket}',
                 file=debug)
 
         for record in trans_cursor.fetchall():
@@ -250,11 +250,11 @@ select * from transfers_applied
                             row.enrollment_term, row.enrollment_session, row.articulation_term,
                             row.model_status, posted_date, row.src_subject, src_catalog_nbr,
                             row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
-                            row.src_offer_nbr, src_repeatable, row.src_description,
+                            row.src_offer_nbr, src_is_repeatable, row.src_description,
                             row.academic_program, row.units_taken, row.dst_institution,
                             row.dst_designation, row.dst_course_id, row.dst_offer_nbr,
                             row.dst_subject, dst_catalog_nbr, row.dst_grade, row.dst_gpa,
-                            dst_is_mesg, dst_is_bkcr)
+                            dst_is_message, dst_is_blanket)
             if values_added is None:
               values_tuple += (row.user_id, row.reject_reason,
                                row.transfer_overridden == 'Y', row.override_reason,
