@@ -74,6 +74,9 @@ create table transfers_applied (
                             dst_course_id, posted_date)
 );
 
+create unique index on transfers_applied (student_id,
+                                          src_course_id, src_offer_nbr,
+                                          dst_course_id, dst_offer_nbr)
 drop table if exists missing_courses cascade;
 
 create table missing_courses (
@@ -85,45 +88,6 @@ catalog_number        text not NULL,
 primary key (course_id, offer_nbr)
 );
 
--- Set up the archive table too
-drop table if exists transfers_changed cascade;
-create table transfers_changed (
-  id                  serial primary key,
-  student_id          integer,
-  src_institution     text,
-  transfer_model_nbr  integer,
-  enrollment_term     integer,
-  enrollment_session  text,
-  articulation_term   integer,
-  model_status        text,
-  posted_date         date,
-  src_subject         text,
-  src_catalog_nbr     text,
-  src_designation     text,
-  src_grade           text,
-  src_gpa             real,
-  src_course_id       integer,
-  src_offer_nbr       integer,
-  src_is_repeatable   boolean,
-  src_description     text,
-  academic_program    text,
-  units_taken         real,
-  dst_institution     text,
-  dst_designation     text,
-  dst_course_id       integer,
-  dst_offer_nbr       integer,
-  dst_subject         text,
-  dst_catalog_nbr     text,
-  dst_grade           text,
-  dst_gpa             real,
-  dst_is_message      boolean,
-  dst_is_blanket      boolean,
-  user_id             text,
-  reject_reason       text,
-  transfer_overridden boolean,
-  override_reason     text,
-  comment             text
-);
 
 -- The update_history table
 drop table if exists update_history;
