@@ -5,7 +5,7 @@
 *.txt
 *.csv
 /debugs/
-/logs/
+/Logs/
 /debug
 /out
 /skipped
