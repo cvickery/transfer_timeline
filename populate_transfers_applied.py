@@ -35,7 +35,6 @@ trans_cursor.execute("""
 drop table if exists transfers_applied cascade;
 
 create table transfers_applied (
-  id                  serial primary key,
   student_id          integer not NULL,
   src_institution     text not NULL,
   transfer_model_nbr  integer not NULL,
@@ -70,13 +69,11 @@ create table transfers_applied (
   transfer_overridden boolean default false,
   override_reason     text not NULL,
   comment             text not NULL,
-  constraint single unique (student_id, src_course_id, src_offer_nbr, dst_institution,
-                            dst_course_id, posted_date)
+  primary key (student_id, src_course_id, src_offer_nbr,
+                           dst_course_id, dst_offer_nbr,
+                           articulation_term, posted_date)
 );
 
-create unique index on transfers_applied (student_id,
-                                          src_course_id, src_offer_nbr,
-                                          dst_course_id, dst_offer_nbr)
 drop table if exists missing_courses cascade;
 
 create table missing_courses (
@@ -98,7 +95,6 @@ file_date   date,
 last_post   date,
 num_records integer,
 num_added   integer,
-num_changed integer,
 num_skipped integer
 );
 
@@ -128,7 +124,7 @@ num_skipped = 0
 
 m = 0
 num_records = len(open(latest, newline=None, errors='backslashreplace').readlines())
-with open('./populate.log', 'w') as logfile:
+with open('./Logs/populate.log', 'w') as logfile:
   with open(latest, newline=None, errors='backslashreplace') as csvfile:
     reader = csv.reader(csvfile, )
     for line in reader:
@@ -145,8 +141,8 @@ with open('./populate.log', 'w') as logfile:
           cols.remove('sysdate')
           values_added = None
 
-        # columns {src_repeatable, dst_is_message, dst_is_blanket} from CF catalog (cached above).
-        cols.insert(1 + cols.index('src_offer_nbr'), 'src_repeatable')
+        # columns {src_is_repeatable, dst_is_message, dst_is_blanket} from CF catalog (cached above).
+        cols.insert(1 + cols.index('src_offer_nbr'), 'src_is_repeatable')
         cols.insert(1 + cols.index('dst_gpa'), 'dst_is_message')
         cols.insert(1 + cols.index('dst_is_message'), 'dst_is_blanket')
 
@@ -174,7 +170,7 @@ with open('./populate.log', 'w') as logfile:
           if last_post is None or last_post < posted_date:
             last_post = posted_date
         else:
-          posted_date = None
+          posted_date = datetime.date(1901, 1, 1)
 
         src_course_id = int(row.src_course_id)
         src_offer_nbr = int(row.src_offer_nbr)
@@ -192,7 +188,7 @@ with open('./populate.log', 'w') as logfile:
                        row.enrollment_term, row.enrollment_session, row.articulation_term,
                        row.model_status, posted_date, row.src_subject, src_catalog_nbr,
                        row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
-                       row.src_offer_nbr, src_repeatable, row.src_description,
+                       row.src_offer_nbr, src_is_repeatable, row.src_description,
                        row.academic_program, row.units_taken, row.dst_institution,
                        row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
                        dst_catalog_nbr, row.dst_grade, row.dst_gpa, dst_is_message, dst_is_blanket)
