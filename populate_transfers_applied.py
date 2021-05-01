@@ -8,21 +8,22 @@ from pathlib import Path
 from pgconnection import PgConnection
 
 possibles = Path('/Users/vickery/transfers_applied/downloads').glob('*FULL*')
-latest = None
+the_file = None
 for possible in possibles:
-  if latest is None or possible.stat().st_mtime > latest.stat().st_mtime:
-    latest = possible
-if latest is None:
+  if the_file is None or possible.stat().st_mtime > the_file.stat().st_mtime:
+    the_file = possible
+if the_file is None:
   sys.exit('No population source found.')
 
-print('I advise you not to do this. Repent, or Proceed anyway? (R/p) ',
+file_name = the_file.name
+file_date = datetime.date.fromtimestamp(the_file.stat().st_mtime)
+print('Using:', file_name, file_date.strftime('%B %d, %Y'), file=sys.stderr)
+print('I advise you not to do this. Repent! (or proceed anyway) [R/p] ',
       end='', file=sys.stderr)
 if input().lower().startswith('p'):
   print('Don’t say you weren’t warned!', file=sys.stderr)
 else:
   sys.exit('Ill-advised consequences averted!')
-
-repeatable = dict()
 
 curric_conn = PgConnection('cuny_curriculum')
 curric_cursor = curric_conn.cursor()
@@ -37,7 +38,6 @@ drop table if exists transfers_applied cascade;
 create table transfers_applied (
   student_id          integer not NULL,
   src_institution     text not NULL,
-  transfer_model_nbr  integer not NULL,
   enrollment_term     integer not NULL,
   enrollment_session  text not NULL,
   articulation_term   integer not NULL,
@@ -64,25 +64,10 @@ create table transfers_applied (
   dst_gpa             real not NULL,
   dst_is_message      boolean not NULL,
   dst_is_blanket      boolean not NULL,
-  user_id             text not NULL,
-  reject_reason       text not NULL,
-  transfer_overridden boolean default false,
-  override_reason     text not NULL,
-  comment             text not NULL,
+
   primary key (student_id, src_course_id, src_offer_nbr,
                            dst_course_id, dst_offer_nbr,
                            articulation_term, posted_date)
-);
-
-drop table if exists missing_courses cascade;
-
-create table missing_courses (
-course_id             integer not NULL,
-offer_nbr             integer not NULL,
-institution           text not NULL,
-subject               text not NULL,
-catalog_number        text not NULL,
-primary key (course_id, offer_nbr)
 );
 
 
@@ -99,7 +84,6 @@ num_skipped integer
 );
 
 commit;
-
 """)
 
 # Caches of all repeatable, message, and blanket credit courses
@@ -113,56 +97,47 @@ curric_cursor.execute("""select course_id, offer_nbr
                        from cuny_courses
                        where attributes ~* 'BKCR'""")
 blankets = [(int(row.course_id), int(row.offer_nbr)) for row in curric_cursor.fetchall()]
+curric_cursor.close()
 
-
-file_name = latest.name
-file_date = datetime.datetime.fromtimestamp(latest.stat().st_mtime).strftime('%Y-%m-%d')
 last_post = None
 num_added = 0
 num_changed = 0   # Will not change here.
 num_skipped = 0
 
-m = 0
-num_records = len(open(latest, newline=None, errors='backslashreplace').readlines())
+cols = ['student_id', 'src_institution', 'enrollment_term', 'enrollment_session',
+        'articulation_term', 'model_status', 'posted_date', 'src_subject', 'src_catalog_nbr',
+        'src_designation', 'src_grade', 'src_gpa', 'src_course_id', 'src_offer_nbr',
+        'src_is_repeatable', 'src_description', 'academic_program', 'units_taken',
+        'dst_institution', 'dst_designation', 'dst_course_id', 'dst_offer_nbr', 'dst_subject',
+        'dst_catalog_nbr', 'dst_grade', 'dst_gpa', 'dst_is_message', 'dst_is_blanket']
+placeholders = ((len(cols)) * '%s,').strip(', ')
+cols = ','.join(cols)
+
 with open('./Logs/populate.log', 'w') as logfile:
-  with open(latest, newline=None, errors='backslashreplace') as csvfile:
+
+  # There are discrepancies between the number of lines in the .csv file and the number of records
+  # actually found, presumably because of newlines in the comments field. Not to totally checked,
+  # though.
+  num_read = 0
+  num_expeted = len(open(the_file, newline=None, errors='backslashreplace').readlines()) - 1
+  with open(the_file, newline=None, errors='backslashreplace') as csvfile:
     reader = csv.reader(csvfile, )
+
     for line in reader:
 
       if reader.line_num == 1:
         headers = [h.lower().replace(' ', '_') for h in line]
-        cols = [h for h in headers]
-
-        # Adjust for columns not present in queries prior to 2021-03-18
-        if 'comment' not in cols:
-          cols += ['user_id', 'reject_reason', 'transfer_overridden', 'override_reason', 'comment']
-          values_added = ('00000000', '', False, '', '')
-        else:
-          cols.remove('sysdate')
-          values_added = None
-
-        # columns {src_is_repeatable, dst_is_message, dst_is_blanket} from CF catalog (cached above).
-        cols.insert(1 + cols.index('src_offer_nbr'), 'src_is_repeatable')
-        cols.insert(1 + cols.index('dst_gpa'), 'dst_is_message')
-        cols.insert(1 + cols.index('dst_is_message'), 'dst_is_blanket')
-
-        placeholders = ((len(cols)) * '%s,').strip(', ')
-        cols = ', '.join([c for c in cols])
         Row = namedtuple('Row', headers)
 
       else:
-        m += 1
-        print(f'  {m:06,}/{num_records:06,}\r', end='', file=sys.stderr)
+
+        num_read += 1
+        print(f'    {num_read:6,}/{num_expected:6,}\r', end='', file=sys.stderr)
+
         row = Row._make(line)
-
-        # yr = 1900 + 100 * int(row.enrollment_term[0]) + int(row.enrollment_term[1:3])
-        # mo = int(row.enrollment_term[-1])
-        # da = 1
-        # enrollment_term = datetime.date(yr, mo, da)
-
-        # yr = 1900 + 100 * int(row.articulation_term[0]) + int(row.articulation_term[1:3])
-        # mo = int(row.articulation_term[-1])
-        # articulation_term = datetime.date(yr, mo, da)
+        if reader.line_num == 2 and 'sysdate' in headers:
+          mo, da, yr = row.sysdate.split('/')
+          file_date = datetime.date(int(yr), int(mo), int(da))
 
         if '/' in row.posted_date:
           mo, da, yr = row.posted_date.split('/')
@@ -170,6 +145,7 @@ with open('./Logs/populate.log', 'w') as logfile:
           if last_post is None or last_post < posted_date:
             last_post = posted_date
         else:
+          # Missing posted_date
           posted_date = datetime.date(1901, 1, 1)
 
         src_course_id = int(row.src_course_id)
@@ -179,22 +155,19 @@ with open('./Logs/populate.log', 'w') as logfile:
         dst_offer_nbr = int(row.dst_offer_nbr)
         dst_catalog_nbr = row.dst_catalog_nbr.strip()
 
-        # Is the src course is repeatable; is dst course is MESG or BKCR
-        src_is_repeatable = (src_course_id, src_offer_nbr) in repeatable
+        # Is the src course repeatable; is dst course in MESG or BKCR
+        src_is_repeatable = (src_course_id, src_offer_nbr) in repeatables
         dst_is_message = (dst_course_id, dst_offer_nbr) in messages
         dst_is_blanket = (dst_course_id, dst_offer_nbr) in blankets
 
-        value_tuple = (row.student_id, row.src_institution, row.transfer_model_nbr,
-                       row.enrollment_term, row.enrollment_session, row.articulation_term,
-                       row.model_status, posted_date, row.src_subject, src_catalog_nbr,
-                       row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
-                       row.src_offer_nbr, src_is_repeatable, row.src_description,
-                       row.academic_program, row.units_taken, row.dst_institution,
-                       row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
-                       dst_catalog_nbr, row.dst_grade, row.dst_gpa, dst_is_message, dst_is_blanket)
-        if values_added is not None:
-          value_tuple += values_added
-        # print('values tuple', len(value_tuple), value_tuple)
+        value_tuple = (row.student_id, row.src_institution, row.enrollment_term,
+                       row.enrollment_session, row.articulation_term, row.model_status, posted_date,
+                       row.src_subject, src_catalog_nbr, row.src_designation, row.src_grade,
+                       row.src_gpa, row.src_course_id, row.src_offer_nbr, src_is_repeatable,
+                       row.src_description, row.academic_program, row.units_taken,
+                       row.dst_institution, row.dst_designation, row.dst_course_id,
+                       row.dst_offer_nbr, row.dst_subject, dst_catalog_nbr, row.dst_grade,
+                       row.dst_gpa, dst_is_message, dst_is_blanket)
         trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) '
                              f'on conflict do nothing',
                              value_tuple)
@@ -204,11 +177,14 @@ with open('./Logs/populate.log', 'w') as logfile:
           print(f'Skipped {value_tuple}', file=logfile)
           num_skipped += 1
 
+  # Report difference between num_expected and num_read.
+  print(f'Expected {num_expected} records. Found {num_read} records.', file=logfile)
+
   # Update the update_history table
   trans_cursor.execute(f"""
   insert into update_history values(
             '{file_name}', '{file_date}', '{last_post}',
-            {num_records}, {num_added}, {num_changed}, {num_skipped})
+            {num_read}, {num_added}, {num_skipped})
   """)
 
 trans_conn.commit()
