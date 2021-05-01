@@ -74,8 +74,8 @@ placeholders = ((len(cols)) * '%s,').strip(', ')
 cols = ','.join(cols)
 
 # Progress indicators
-num_read = 0
-num_expected = len(open(the_file, newline=None, errors='backslashreplace').readlines()) - 1
+num_records = 0
+num_lines = len(open(the_file, newline=None, errors='backslashreplace').readlines()) - 1
 with open(f'./Logs/update_{file_date.isoformat()}.log', 'w') as logfile:
   with open(the_file, encoding='ascii', errors='backslashreplace') as csv_file:
     reader = csv.reader(csv_file)
@@ -91,9 +91,9 @@ with open(f'./Logs/update_{file_date.isoformat()}.log', 'w') as logfile:
           mo, da, yr = row.sysdate.split('/')
           file_date = datetime.date(int(yr), int(mo), int(da))
 
-        num_read += 1
+        num_records += 1
         if progress:
-          print(f'    {num_read:6,}/{num_expected:6,}\r', end='', file=sys.stderr)
+          print(f'    {num_records:6,}/{num_lines:6,}\r', end='', file=sys.stderr)
 
         row = Row._make(line)
         if '/' in row.posted_date:
@@ -135,8 +135,8 @@ with open(f'./Logs/update_{file_date.isoformat()}.log', 'w') as logfile:
           if (max_new_post is None) or (posted_date > max_new_post):
             max_new_post = posted_date
 
-  # Report difference between num_expected and num_read.
-  print(f'Expected {num_expected} records. Found {num_read} records.', file=logfile)
+  # Report difference between num_lines and num_records.
+  print(f'Lines: {num_lines}\nRecords: {num_records}', file=logfile)
 
 # Prepare summary info
 if max_new_post is None:
@@ -147,14 +147,14 @@ else:
 trans_cursor.execute(f"""
     insert into update_history values(
           '{file_name}', '{file_date}', {max_new_post},
-          {num_records}, {num_added}, {num_skipped}, {m})
+          {num_records}, {num_added}, {num_skipped})
           on conflict do nothing
   """)
 if trans_cursor.rowcount == 0:
   print(f"""Update History conflict\n new:
         '{file_name}', '{file_date}', {max_new_post},
-        {num_records}, {m}, {num_added}, {num_skipped})
-        """, file=sys.stderr)
+        {num_records}, {num_added}, {num_skipped})
+        """, file=logfile)
 
 trans_conn.commit()
 trans_conn.close()

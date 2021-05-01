@@ -118,8 +118,8 @@ with open('./Logs/populate.log', 'w') as logfile:
   # There are discrepancies between the number of lines in the .csv file and the number of records
   # actually found, presumably because of newlines in the comments field. Not to totally checked,
   # though.
-  num_read = 0
-  num_expected = len(open(the_file, newline=None, errors='backslashreplace').readlines()) - 1
+  num_records = 0
+  num_lines = len(open(the_file, newline=None, errors='backslashreplace').readlines()) - 1
   with open(the_file, newline=None, errors='backslashreplace') as csvfile:
     reader = csv.reader(csvfile, )
 
@@ -131,8 +131,8 @@ with open('./Logs/populate.log', 'w') as logfile:
 
       else:
 
-        num_read += 1
-        print(f'    {num_read:6,}/{num_expected:6,}\r', end='', file=sys.stderr)
+        num_records += 1
+        print(f'    {num_records:6,}/{num_lines:6,}\r', end='', file=sys.stderr)
 
         row = Row._make(line)
         if reader.line_num == 2 and 'sysdate' in headers:
@@ -177,14 +177,14 @@ with open('./Logs/populate.log', 'w') as logfile:
           print(f'Skipped {value_tuple}', file=logfile)
           num_skipped += 1
 
-  # Report difference between num_expected and num_read.
-  print(f'Expected {num_expected} records. Found {num_read} records.', file=logfile)
+  # Report difference between num_lines and num_records.
+  print(f'Lines: {num_lines}\nRecords{num_records}', file=logfile)
 
   # Update the update_history table
   trans_cursor.execute(f"""
   insert into update_history values(
             '{file_name}', '{file_date}', '{last_post}',
-            {num_read}, {num_added}, {num_skipped})
+            {num_records}, {num_added}, {num_skipped})
   """)
 
 trans_conn.commit()
