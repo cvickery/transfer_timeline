@@ -119,7 +119,7 @@ with open('./Logs/populate.log', 'w') as logfile:
   # actually found, presumably because of newlines in the comments field. Not to totally checked,
   # though.
   num_read = 0
-  num_expeted = len(open(the_file, newline=None, errors='backslashreplace').readlines()) - 1
+  num_expected = len(open(the_file, newline=None, errors='backslashreplace').readlines()) - 1
   with open(the_file, newline=None, errors='backslashreplace') as csvfile:
     reader = csv.reader(csvfile, )
 
