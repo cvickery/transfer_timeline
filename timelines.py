@@ -1,4 +1,37 @@
 #! /usr/local/bin/python3
+""" Event Dates:
+      Session: Early Registration, Open Registration, Classes Start
+      Admissions: Apply, Admit, Matric
+      Registrations: First, Latest
+      Transfers: First, Latest
+
+    Algorithm:
+      Get session event dates: these are fixed for all members of the cohort
+      Get all students in the cohort who were admitted
+      Get all students in the cohort who matriculated, along with their articulation terms
+      For each student who matriculated, for the articulation term:
+        First transfer fetch
+        Latest transfer fetch
+        First registration
+        Latest registration
+
+    Report, as of report date:
+      Number of admitted; number matriculated
+      [Do transfers get fetched if the student does not matriculate?]
+      Descriptive statistics: mean, std dev, median, mode, range, siqr for the following intervals:
+        Apply to Admit
+        Admit to Matric
+        Matric to First Register
+        Matric to Latest Register
+        Admit to first Fetch
+        Admit to Latest Fetch
+        Matric to First Fetch
+        Matric to Latest Fetch
+
+    Not looked at, but potentially useful info:
+      Students who belong to more than one transfer cohort for a semester. Does transfer fetch
+      timing make them go to another college?
+"""
 
 import sys
 import argparse
@@ -6,8 +39,6 @@ import argparse
 from collections import namedtuple, defaultdict
 
 from pgconnection import PgConnection
-
-CohortKey = namedtuple('CohortKey', 'admit_term institution student_id')
 
 institutions = {'BAR': 'Baruch', 'BCC': 'Bronx', 'BKL': 'Brooklyn', 'BMC': 'BMCC',
                 'CSI': 'Staten Island', 'CTY': 'City', 'HOS': 'Hostos', 'HTR': 'Hunter',
@@ -20,10 +51,10 @@ institutions = {'BAR': 'Baruch', 'BCC': 'Bronx', 'BKL': 'Brooklyn', 'BMC': 'BMCC
 # Initialize
 # -------------------------------------------------------------------------------------------------
 parser = argparse.ArgumentParser('Timelines by Cohort')
-parser.add_argument('-a', '--admit_term', default=None)
-parser.add_argument('-i', '--institutions', nargs='*')
+parser.add_argument('-a', '--admit_term', default=None)  # Or "articulation" term
+parser.add_argument('-i', '--institution', default=None)
 args = parser.parse_args()
-if args.admit_term is None or len(args.institutions) == 0:
+if args.admit_term is None or args.institution is None:
   sys.exit(f'Missing cohort information: -a admit_term -i institutions')
 try:
   admit_term = int(args.admit_term)
@@ -45,14 +76,83 @@ try:
   semester = f'{semester}, {year}'
 except ValueError as ve:
   sys.exit(f'“{args.admit_term}” is not a valid CUNY term')
-requested_institutions = [i.strip('01').upper()for i in args.institutions]
+
+institution = args.institution.strip('01').upper()
+if institution not in institutions:
+  sys.exit(f'“{args.institution}” is not a valid CUNY institution')
 
 conn = PgConnection('cuny_transfers')
 cursor = conn.cursor()
 
+# Get session events
+# -------------------------------------------------------------------------------------------------
+Session = namedtuple('Session', 'institution term session first_enrollment open_enrollment '
+                     'last_enrollment session_start session_end ')
+cursor.execute(f"""
+    select * from sessions where institution = '{institution}' and term = {admit_term}
+    """)
+session = None
+for row in cursor.fetchall():
+  if session is None or row.session == '1':
+    session = Session._make(row)
+if session is None:
+  sys.exit(f'No session found for {admit_term}')
+
+# Create a spreadsheet with the cohort's events for debugging/tableauing
+# ------------------------------------------------------------------------------------------------
+with open(f'./timelines/{institution}_{admit_term}.csv', 'w') as spreadsheet:
+  print('Student_ID, Apply, Admit, Matric, First_Fetch, Latest_Fetch, '
+        'First_Register, Latest_Register', file=spreadsheet)
+
+  # Get students and their admission events
+  # -----------------------------------------------------------------------------------------------
+  Admission = namedtuple('Admission', 'student_id application_number institution '
+                         'admit_term requirement_term event_type admit_type action_date '
+                         'effective_date ')
+  cursor.execute(f"""
+      select * from admissions
+       where institution = '{institution}'
+         and admit_term = '{admit_term}'
+         and event_type in ('APPL', 'ADMT', 'MATR')
+      """)
+  students = defaultdict(dict)
+  for row in cursor.fetchall():
+    students[int(row.student_id)][row.event_type] = row.effective_date
+
+  # Provide default (None) values for all events
+  for student_id in students.keys():
+    appl, admt, matr, first_fetch, latest_fetch, first_register, latest_register = (None, None,
+                                                                                    None, None,
+                                                                                    None, None,
+                                                                                    None)
+    if 'APPL' not in students[student_id].keys():
+      students[student_id]['APPL'] = None
+    if 'ADMT' not in students[student_id].keys():
+      students[student_id]['ADMT'] = None
+    if 'MATR' not in students[student_id].keys():
+      students[student_id]['MATR'] = None
+    print(f"{student_id}, {students[student_id]['APPL']}, {students[student_id]['APPL']}, "
+          f"{students[student_id]['APPL']}", file=spreadsheet)
+  print(f'{len(students):,} students in cohort', file=sys.stderr)
+
+  # Transfers Applied dates
+  # -----------------------------------------------------------------------------------------------
+  cursor.execute(f"""
+    select student_id, min(posted_date), max(posted_date)
+      from transfers_applied
+     where dst_institution ~* '{institution}'
+       and articulation_term = {admit_term}
+  group by student_id
+    """)
+  for row in cursor.fetchall():
+    if int(row.student_id) in students.keys():
+      students[row.student_id][first_fetch] = row.min
+      students[row.student_id][latest_fetch] = row.max
+  exit()
+
 for institution in requested_institutions:
   # Get Cohort
-  # -------------------------------------------------------------------------------------------------
+  # -----------------------------------------------------------------------------------------------
   cursor.execute(f"""
   select admit_term, institution, student_id  from admissions
    where admit_term = {admit_term}
