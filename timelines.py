@@ -48,11 +48,25 @@ institutions = {'BAR': 'Baruch', 'BCC': 'Bronx', 'BKL': 'Brooklyn', 'BMC': 'BMCC
                 'SPH': 'Public Health', 'SPS': 'SPS', 'YRK': 'York'}
 
 
+event_types = ['appl', 'admt', 'matr',  # Admissions
+               'first_fetch', 'latest_fetch',  # Transfers
+               'first_register', 'latest_register']  # Registers
+
+
+# events_dict()
+# -------------------------------------------------------------------------------------------------
+def events_dict():
+  """ Default dates for a student's events
+  """
+  return {key: None for key in event_types}
+
+
 # Initialize
 # -------------------------------------------------------------------------------------------------
 parser = argparse.ArgumentParser('Timelines by Cohort')
 parser.add_argument('-a', '--admit_term', default=None)  # Or "articulation" term
 parser.add_argument('-i', '--institution', default=None)
+parser.add_argument('-d', '--debug', action='store_true')
 args = parser.parse_args()
 if args.admit_term is None or args.institution is None:
   sys.exit(f'Missing cohort information: -a admit_term -i institutions')
@@ -98,57 +112,61 @@ for row in cursor.fetchall():
 if session is None:
   sys.exit(f'No session found for {admit_term}')
 
+# Get students and their admission events
+# -----------------------------------------------------------------------------------------------
+Admission = namedtuple('Admission', 'student_id application_number institution '
+                       'admit_term requirement_term event_type admit_type action_date '
+                       'effective_date ')
+cursor.execute(f"""
+    select * from admissions
+     where institution = '{institution}'
+       and admit_term = '{admit_term}'
+       and event_type in ('APPL', 'ADMT', 'MATR')
+    """)
+students = defaultdict(events_dict)
+for row in cursor.fetchall():
+  students[int(row.student_id)][row.event_type.lower()] = row.effective_date
+
+if args.debug:
+  print(f'{len(students):,} students in cohort', file=sys.stderr)
+
+# Transfers Applied dates
+# -----------------------------------------------------------------------------------------------
+cursor.execute(f"""
+  select student_id, min(posted_date), max(posted_date)
+    from transfers_applied
+   where dst_institution ~* '{institution}'
+     and articulation_term = {admit_term}
+group by student_id
+  """)
+for row in cursor.fetchall():
+  if int(row.student_id) in students.keys():
+    students[row.student_id]['first_fetch'] = row.min
+    students[row.student_id]['latest_fetch'] = row.max
+
+# Registration dates
+# -----------------------------------------------------------------------------------------------
+cohort_ids = ','.join([f'{student_id}' for student_id in students.keys()])
+cursor.execute(f"""
+  select student_id, first_date, last_date
+    from registrations
+   where institution ~* '{institution}'
+     and term = {admit_term}
+     and student_id in ({cohort_ids})
+  """)
+for row in cursor.fetchall():
+  students[int(row.student_id)]['first_register'] = row.first_date
+  students[int(row.student_id)]['latest_register'] = row.last_date
+
 # Create a spreadsheet with the cohort's events for debugging/tableauing
 # ------------------------------------------------------------------------------------------------
 with open(f'./timelines/{institution}_{admit_term}.csv', 'w') as spreadsheet:
   print('Student_ID, Apply, Admit, Matric, First_Fetch, Latest_Fetch, '
         'First_Register, Latest_Register', file=spreadsheet)
-
-  # Get students and their admission events
-  # -----------------------------------------------------------------------------------------------
-  Admission = namedtuple('Admission', 'student_id application_number institution '
-                         'admit_term requirement_term event_type admit_type action_date '
-                         'effective_date ')
-  cursor.execute(f"""
-      select * from admissions
-       where institution = '{institution}'
-         and admit_term = '{admit_term}'
-         and event_type in ('APPL', 'ADMT', 'MATR')
-      """)
-  students = defaultdict(dict)
-  for row in cursor.fetchall():
-    students[int(row.student_id)][row.event_type] = row.effective_date
-
-  # Provide default (None) values for all events
   for student_id in students.keys():
-    appl, admt, matr, first_fetch, latest_fetch, first_register, latest_register = (None, None,
-                                                                                    None, None,
-                                                                                    None, None,
-                                                                                    None)
-    if 'APPL' not in students[student_id].keys():
-      students[student_id]['APPL'] = None
-    if 'ADMT' not in students[student_id].keys():
-      students[student_id]['ADMT'] = None
-    if 'MATR' not in students[student_id].keys():
-      students[student_id]['MATR'] = None
-    print(f"{student_id}, {students[student_id]['APPL']}, {students[student_id]['APPL']}, "
-          f"{students[student_id]['APPL']}", file=spreadsheet)
-  print(f'{len(students):,} students in cohort', file=sys.stderr)
-
-  # Transfers Applied dates
-  # -----------------------------------------------------------------------------------------------
-  cursor.execute(f"""
-    select student_id, min(posted_date), max(posted_date)
-      from transfers_applied
-     where dst_institution ~* '{institution}'
-       and articulation_term = {admit_term}
-  group by student_id
-    """)
-  for row in cursor.fetchall():
-    if int(row.student_id) in students.keys():
-      students[row.student_id][first_fetch] = row.min
-      students[row.student_id][latest_fetch] = row.max
-  exit()
+    dates = ','.join([f'{students[student_id][event_date]}' for event_date in event_types])
+    print(f'{student_id}, {dates}', file=spreadsheet)
+exit()
 
 for institution in requested_institutions:
   # Get Cohort
