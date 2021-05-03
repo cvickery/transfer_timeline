@@ -54,8 +54,8 @@ def session_factory(args):
   return Session._make(args)
 
 
-Session = namedtuple('Session', 'first_enrollment_date open_enrollment_date last_enrollment_date '
-                     'session_start_date session_end_date')
+Session = namedtuple('Session', 'first_registration_date open_registration_date '
+                     'last_registration_date ''session_start_date session_end_date')
 Session_Key = namedtuple('Session_Key', 'institution term session')
 sessions = defaultdict(session_factory)
 with open(session_table_file) as stf:
@@ -97,9 +97,9 @@ create table sessions (
   institution text,
   term int,
   session text,
-  first_enrollment date,
-  open_enrollment date,
-  last_enrollment date,
+  first_registration date,
+  open_registration date,
+  last_registration date,
   session_start date,
   session_end date,
   primary key (institution, term, session)
@@ -110,8 +110,8 @@ for key in sessions.keys():
   trans_cursor.execute("""
 insert into sessions values (%s, %s, %s, %s, %s, %s, %s, %s)
 """, (key.institution, key.term, key.session,
-      sessions[key].first_enrollment_date, sessions[key].open_enrollment_date,
-      sessions[key].last_enrollment_date, sessions[key].session_start_date,
+      sessions[key].first_registration_date, sessions[key].open_registration_date,
+      sessions[key].last_registration_date, sessions[key].session_start_date,
       sessions[key].session_end_date))
 trans_conn.commit()
 
@@ -238,7 +238,7 @@ with open(registrations_table_file, encoding='ascii', errors='backslashreplace')
       Row = namedtuple('Row', [col.lower().replace(' ', '_').replace('-', '_') for col in line])
     else:
       m += 1
-      print(f  '{m:6,} / {n:,}\r', end='', file=sys.stderr)
+      print(f'{m:6,} / {n:,}\r', end='', file=sys.stderr)
       row = Row._make(line)
       term = int(row.term)
       if row.career != 'UGRD' or term < 1199 or row.session != '1':
