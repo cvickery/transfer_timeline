@@ -40,12 +40,21 @@ from collections import namedtuple, defaultdict
 
 from pgconnection import PgConnection
 
-institutions = {'BAR': 'Baruch', 'BCC': 'Bronx', 'BKL': 'Brooklyn', 'BMC': 'BMCC',
-                'CSI': 'Staten Island', 'CTY': 'City', 'HOS': 'Hostos', 'HTR': 'Hunter',
-                'JJC': 'John Jay', 'KCC': 'Kingsborough', 'LAG': 'LaGuardia', 'LEH': 'Lehman',
-                'MEC': 'Medgar Evers', 'NCC': 'Guttman', 'NYT': 'City Tech', 'QCC': 'Queensborough',
-                'QNS': 'Queens', 'SLU': 'Labor/Urban', 'SOJ': 'Journalism',
-                'SPH': 'Public Health', 'SPS': 'SPS', 'YRK': 'York'}
+
+class Stats:
+  """ mean, median, mode, etc.
+  """
+  def __init__(self):
+    self.n = self.mean = self.std_dev = self.median = self.mode = self.min_val = self.max_val =\
+        self.q_1 = self.q_2 = self.q_3 = self.siqr = None
+
+
+institution_names = {'BAR': 'Baruch', 'BCC': 'Bronx', 'BKL': 'Brooklyn', 'BMC': 'BMCC',
+                     'CSI': 'Staten Island', 'CTY': 'City', 'HOS': 'Hostos', 'HTR': 'Hunter',
+                     'JJC': 'John Jay', 'KCC': 'Kingsborough', 'LAG': 'LaGuardia', 'LEH': 'Lehman',
+                     'MEC': 'Medgar Evers', 'NCC': 'Guttman', 'NYT': 'City Tech', 'QCC': 'Queensborough',
+                     'QNS': 'Queens', 'SLU': 'Labor/Urban', 'SOJ': 'Journalism',
+                     'SPH': 'Public Health', 'SPS': 'SPS', 'YRK': 'York'}
 
 
 event_names = {'appl': 'Application',
@@ -83,8 +92,8 @@ def events_dict():
 # -------------------------------------------------------------------------------------------------
 parser = argparse.ArgumentParser('Timelines by Cohort')
 parser.add_argument('-t', '--admit_term', default=None)  # Or "articulation" term
-parser.add_argument('-i', '--institution', default=None)
-parser.add_argument('event_pairs', nargs='*')
+parser.add_argument('-i', '--institutions', nargs='*')
+parser.add_argument('-e', '--event_pairs', nargs='*')
 parser.add_argument('-d', '--debug', action='store_true')
 args = parser.parse_args()
 
@@ -102,7 +111,7 @@ for arg in args.event_pairs:
     sys.exit(f'“{arg}” does not match earlier:later event_pair structure.\n'
              f'Valid event types are {event_types}')
 
-if args.admit_term is None or args.institution is None:
+if args.admit_term is None or args.institutions is None:
   sys.exit(f'Missing cohort information: -t admit_term -i institutions event_pairs')
 try:
   admit_term = int(args.admit_term)
@@ -125,9 +134,12 @@ try:
 except ValueError as ve:
   sys.exit(f'“{args.admit_term}” is not a valid CUNY term')
 
-institution = args.institution.strip('01').upper()
-if institution not in institutions:
-  sys.exit(f'“{args.institution}” is not a valid CUNY institution')
+institutions = [i.strip('01').upper() for i in args.institutions]
+if len(institutions) < 1:
+  sys.exit('No institutions')
+for institution in institutions:
+  if institution not in institutions:
+    sys.exit(f'“{args.institution}” is not a valid CUNY institution')
 
 conn = PgConnection('cuny_transfers')
 cursor = conn.cursor()
@@ -146,92 +158,148 @@ for row in cursor.fetchall():
 if session is None:
   sys.exit(f'No session found for {admit_term}')
 
-# Get students and their admission events
-# -----------------------------------------------------------------------------------------------
-Admission = namedtuple('Admission', 'student_id application_number institution '
-                       'admit_term requirement_term event_type admit_type action_date '
-                       'effective_date ')
-cursor.execute(f"""
-    select * from admissions
-     where institution = '{institution}'
-       and admit_term = '{admit_term}'
-       and event_type in ('APPL', 'ADMT', 'MATR')
+# Loop through institutions
+# =================================================================================================
+""" Generate separate reports in Markdown for each college.
+    Generate separate spreadsheets for each measure, with colleges as columns and statistical
+    values as the rows. Preserve the order of the colleges from the command line.
+"""
+columns = dict()  # key is institution, values are dicts of statistics keyed by measure name
+for institution in institutions:
+  columns[institution] = {}
+
+  # Get students and their admission events
+  # -----------------------------------------------------------------------------------------------
+  Admission = namedtuple('Admission', 'student_id application_number institution '
+                         'admit_term requirement_term event_type admit_type action_date '
+                         'effective_date ')
+  cursor.execute(f"""
+      select * from admissions
+       where institution = '{institution}'
+         and admit_term = '{admit_term}'
+         and event_type in ('APPL', 'ADMT', 'MATR')
+      """)
+  students = defaultdict(events_dict)
+  for row in cursor.fetchall():
+    students[int(row.student_id)][row.event_type.lower()] = row.effective_date
+
+  if args.debug:
+    print(f'{len(students):,} students in cohort', file=sys.stderr)
+
+  # Transfers Applied dates
+  # -----------------------------------------------------------------------------------------------
+  cursor.execute(f"""
+    select student_id, min(posted_date), max(posted_date)
+      from transfers_applied
+     where dst_institution ~* '{institution}'
+       and articulation_term = {admit_term}
+  group by student_id
     """)
-students = defaultdict(events_dict)
-for row in cursor.fetchall():
-  students[int(row.student_id)][row.event_type.lower()] = row.effective_date
+  for row in cursor.fetchall():
+    if int(row.student_id) in students.keys():
+      students[row.student_id]['first_fetch'] = row.min
+      students[row.student_id]['latest_fetch'] = row.max
 
-if args.debug:
-  print(f'{len(students):,} students in cohort', file=sys.stderr)
+  # Registration dates
+  # -----------------------------------------------------------------------------------------------
+  cohort_ids = ','.join([f'{student_id}' for student_id in students.keys()])
+  cursor.execute(f"""
+    select student_id, first_date, last_date
+      from registrations
+     where institution ~* '{institution}'
+       and term = {admit_term}
+       and student_id in ({cohort_ids})
+    """)
+  for row in cursor.fetchall():
+    students[int(row.student_id)]['first_register'] = row.first_date
+    students[int(row.student_id)]['latest_register'] = row.last_date
 
-# Transfers Applied dates
-# -----------------------------------------------------------------------------------------------
-cursor.execute(f"""
-  select student_id, min(posted_date), max(posted_date)
-    from transfers_applied
-   where dst_institution ~* '{institution}'
-     and articulation_term = {admit_term}
-group by student_id
-  """)
-for row in cursor.fetchall():
-  if int(row.student_id) in students.keys():
-    students[row.student_id]['first_fetch'] = row.min
-    students[row.student_id]['latest_fetch'] = row.max
+  # Create a spreadsheet with the cohort's events for debugging/tableauing
+  # -----------------------------------------------------------------------------------------------
+  with open(f'./timelines/{institution}-{admit_term}.csv', 'w') as spreadsheet:
+    print('Student ID,', ','.join([f'{event_names[name]}' for name in event_names.keys()]),
+          file=spreadsheet)
+    for student_id in students.keys():
+      dates = ','.join([f'{students[student_id][event_date]}' for event_date in event_types])
+      print(f'{student_id}, {dates}', file=spreadsheet)
 
-# Registration dates
-# -----------------------------------------------------------------------------------------------
-cohort_ids = ','.join([f'{student_id}' for student_id in students.keys()])
-cursor.execute(f"""
-  select student_id, first_date, last_date
-    from registrations
-   where institution ~* '{institution}'
-     and term = {admit_term}
-     and student_id in ({cohort_ids})
-  """)
-for row in cursor.fetchall():
-  students[int(row.student_id)]['first_register'] = row.first_date
-  students[int(row.student_id)]['latest_register'] = row.last_date
-
-# Create a spreadsheet with the cohort's events for debugging/tableauing
-# ------------------------------------------------------------------------------------------------
-with open(f'./timelines/{institution}-{admit_term}.csv', 'w') as spreadsheet:
-  print('Student ID,', ','.join([f'{event_names[name]}' for name in event_names.keys()]),
-        file=spreadsheet)
-  for student_id in students.keys():
-    dates = ','.join([f'{students[student_id][event_date]}' for event_date in event_types])
-    print(f'{student_id}, {dates}', file=spreadsheet)
-
-# Generate Report
+# Generate Markdown reports and build spreadsheets
 # -------------------------------------------------------------------------------------------------
+spreadsheets = dict()  # Index by measure (separate sheets)
+stat_values = dict()  # Index by institution (columns)
 for event_pair in event_pairs:
   earlier, later = event_pair
-  with open(f'./reports/{institution}-{admit_term}-{earlier} to {later}.md', 'w') as report:
-    print(f'# {institutions[institution]}: {semester}\n\n'
-          f'## Days from {event_names[earlier]} to {event_names[later]}\n'
-          f'| Statistic | Value |\n| ---: | :--- |', file=report)
-    # Build frequency distributions of earlier and later event date pair differences
-    frequencies = defaultdict(int)  # Maybe plot these later
-    deltas = []
-    for student_id in students.keys():
-      if (students[student_id][earlier] is not None
-         and students[student_id][earlier] != missing_date
-         and students[student_id][later] is not None
-         and students[student_id][later] != missing_date):
-        delta = students[student_id][later] - students[student_id][earlier]
+  for institution in institutions:
+    s = Stats()
+    with open(f'./reports/{institution}-{admit_term}-{earlier} to {later}.md', 'w') as report:
+      print(f'# {institution_names[institution]}: {semester}\n\n'
+            f'## Days from {event_names[earlier]} to {event_names[later]}\n'
+            f'| Statistic | Value |\n| ---: | :--- |', file=report)
+      # Build frequency distributions of earlier and later event date pair differences
+      frequencies = defaultdict(int)  # Maybe plot these later
+      deltas = []
+      for student_id in students.keys():
+        if (students[student_id][earlier] is not None
+           and students[student_id][earlier] != missing_date
+           and students[student_id][later] is not None
+           and students[student_id][later] != missing_date):
+          delta = students[student_id][later] - students[student_id][earlier]
 
-        deltas.append(delta.days)
-        frequencies[delta.days] += 1
-    print(f'| N | {len(deltas)}', file=report)
-    if len(deltas) > 5:
-      print(f'| Mean | {statistics.fmean(deltas):.0f}', file=report)
-      print(f'| Std Deviation | {statistics.stdev(deltas):.1f}', file=report)
-      print(f'| Medan | {statistics.median_grouped(deltas):.0f}', file=report)
-      print(f'| Mode | {statistics.mode(deltas):.0f}', file=report)
-      print(f'| Range | {min(deltas):.0f} : {max(deltas)}', file=report)
-      quartiles = statistics.quantiles(deltas, n=4, method='exclusive')
-      print(f'| Quartiles | {quartiles[0]}; {quartiles[1]}; {quartiles[2]}',
-            file=report)
-      print(f'| SIQR | {(quartiles[2] - quartiles[0]) / 2.0:.1f}', file=report)
-    else:
-      print('### Not enough data.', file=report)
+          deltas.append(delta.days)
+          frequencies[delta.days] += 1
+      s.n = len(deltas)
+      print(f'| N | {s.n}', file=report)
+      if len(deltas) > 5:
+        s.mean = statistics.fmean(deltas)
+        s.std_dev = statistics.stdev(deltas)
+        s.median = statistics.median_grouped(deltas)
+        s.mode = statistics.mode(deltas)
+        s.min_val = min(deltas)
+        s.max_val = max(deltas)
+        min_max_str = f'{min(deltas)} : {max(deltas)}'
+        quartile_list = statistics.quantiles(deltas, n=4, method='exclusive')
+        s.q_1 = quartile_list[0]
+        s.q_2 = quartile_list[1]
+        s.q_3 = quartile_list[2]
+        quartile_str = f'{s.q_1:.0f} : {s.q_2:.0f} : {s.q_3:.0f}'
+        s.siqr = (s.q_3 - s.q_1) / 2.0
+        print(f'| Mean | {s.mean:.0f}', file=report)
+        print(f'| Std Dev | {s.std_dev:.1f}', file=report)
+        print(f'| Medan | {s.median:.0f}', file=report)
+        print(f'| Mode | {s.mode:.0f}', file=report)
+        print(f'| Range | {min_max_str}', file=report)
+        print(f'| Quartiles | {quartile_str}', file=report)
+        print(f'| SIQR | {s.siqr:.1f}', file=report)
+      else:
+        print('### Not enough data.', file=report)
+    stat_values[institution] = s
+    print(earlier, later, institution, stat_values[institution].n)
+  print(stat_values)
+
+  with open(f'./stat_sheets/{earlier}-to-{later}-{admit_term}.csv', 'w') as stat_sheet:
+    col_headings = 'Stat,' + ', '.join([f'{institution}' for institution in institutions])
+    print(f'{col_headings}', file=stat_sheet)
+    vals = ','.join([f'{stat_values[institution].n}' for institution in stat_values])
+    print(f'N, {vals}', file=stat_sheet)
+    vals = ','.join([f'{stat_values[institution].mean:.0f}' for institution in stat_values])
+    print(f'mean, {vals}', file=stat_sheet)
+    vals = ','.join([f'{stat_values[institution].std_dev:.1f}' for institution in stat_values])
+    print(f'std dev, {vals}', file=stat_sheet)
+    vals = ','.join([f'{stat_values[institution].median:.0f}' for institution in stat_values])
+    print(f'median, {vals}', file=stat_sheet)
+    vals = ','.join([f'{stat_values[institution].mode:.0f}' for institution in stat_values])
+    print(f'mode, {vals}', file=stat_sheet)
+    vals = ','.join([f'{stat_values[institution].min_val:.0f}' for institution in stat_values])
+    print(f'Min, {vals}', file=stat_sheet)
+    vals = ','.join([f'{stat_values[institution].max_val:.0f}' for institution in stat_values])
+    print(f'Max, {vals}', file=stat_sheet)
+    vals = ','.join([f'{stat_values[institution].q_1}' for institution in stat_values])
+    print(f'Q1, {vals}', file=stat_sheet)
+    vals = ','.join([f'{stat_values[institution].q_2}' for institution in stat_values])
+    print(f'Q2, {vals}', file=stat_sheet)
+    vals = ','.join([f'{stat_values[institution].q_3}' for institution in stat_values])
+    print(f'Q3, {vals}', file=stat_sheet)
+    vals = ','.join([f'{stat_values[institution].siqr:.1f}' for institution in stat_values])
+    print(f'SIQR, {vals}', file=stat_sheet)
+
 exit()
