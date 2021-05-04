@@ -52,9 +52,9 @@ class Stats:
 institution_names = {'BAR': 'Baruch', 'BCC': 'Bronx', 'BKL': 'Brooklyn', 'BMC': 'BMCC',
                      'CSI': 'Staten Island', 'CTY': 'City', 'HOS': 'Hostos', 'HTR': 'Hunter',
                      'JJC': 'John Jay', 'KCC': 'Kingsborough', 'LAG': 'LaGuardia', 'LEH': 'Lehman',
-                     'MEC': 'Medgar Evers', 'NCC': 'Guttman', 'NYT': 'City Tech', 'QCC': 'Queensborough',
-                     'QNS': 'Queens', 'SLU': 'Labor/Urban', 'SOJ': 'Journalism',
-                     'SPH': 'Public Health', 'SPS': 'SPS', 'YRK': 'York'}
+                     'MEC': 'Medgar Evers', 'NCC': 'Guttman', 'NYT': 'City Tech',
+                     'QCC': 'Queensborough', 'QNS': 'Queens', 'SLU': 'Labor/Urban',
+                     'SOJ': 'Journalism', 'SPH': 'Public Health', 'SPS': 'SPS', 'YRK': 'York'}
 
 
 event_names = {'appl': 'Application',
@@ -160,14 +160,17 @@ if session is None:
 
 # Loop through institutions
 # =================================================================================================
-""" Generate separate reports in Markdown for each college.
+""" Generate separate reports in Markdown for each institution.
     Generate separate spreadsheets for each measure, with colleges as columns and statistical
     values as the rows. Preserve the order of the colleges from the command line.
 """
-columns = dict()  # key is institution, values are dicts of statistics keyed by measure name
-for institution in institutions:
-  columns[institution] = {}
+# Collect statistic values. Index outer dict by measure (separate sheets), inner dict by institution
+stat_values = defaultdict(defaultdict)
 
+
+# Build datasets for each institution's student cohort
+# =================================================================================================
+for institution in institutions:
   # Get students and their admission events
   # -----------------------------------------------------------------------------------------------
   Admission = namedtuple('Admission', 'student_id application_number institution '
@@ -223,18 +226,16 @@ for institution in institutions:
       dates = ','.join([f'{students[student_id][event_date]}' for event_date in event_types])
       print(f'{student_id}, {dates}', file=spreadsheet)
 
-# Generate Markdown reports and build spreadsheets
-# -------------------------------------------------------------------------------------------------
-spreadsheets = dict()  # Index by measure (separate sheets)
-stat_values = dict()  # Index by institution (columns)
-for event_pair in event_pairs:
-  earlier, later = event_pair
-  for institution in institutions:
+  # For each measure, generate a Markdown report, and collect stats for the measures spreadsheets
+  # -----------------------------------------------------------------------------------------------
+  for event_pair in event_pairs:
     s = Stats()
+    stat_values[event_pair][institution] = s
+    earlier, later = event_pair
     with open(f'./reports/{institution}-{admit_term}-{earlier} to {later}.md', 'w') as report:
       print(f'# {institution_names[institution]}: {semester}\n\n'
             f'## Days from {event_names[earlier]} to {event_names[later]}\n'
-            f'| Statistic | Value |\n| ---: | :--- |', file=report)
+            f'| Statistic | Value |\n| :--- | :--- |', file=report)
       # Build frequency distributions of earlier and later event date pair differences
       frequencies = defaultdict(int)  # Maybe plot these later
       deltas = []
@@ -272,34 +273,120 @@ for event_pair in event_pairs:
         print(f'| SIQR | {s.siqr:.1f}', file=report)
       else:
         print('### Not enough data.', file=report)
-    stat_values[institution] = s
-    print(earlier, later, institution, stat_values[institution].n)
-  print(stat_values)
 
+# Generate each spreadsheet from the saved spreadsheets dict
+# ------------------------------------------------------------------------------------------------
+for event_pair in event_pairs:
+  earlier, later = event_pair
   with open(f'./stat_sheets/{earlier}-to-{later}-{admit_term}.csv', 'w') as stat_sheet:
-    col_headings = 'Stat,' + ', '.join([f'{institution}' for institution in institutions])
+    col_headings = 'Statistic,' + ', '.join([f'{institution}' for institution in institutions])
     print(f'{col_headings}', file=stat_sheet)
-    vals = ','.join([f'{stat_values[institution].n}' for institution in stat_values])
+
+    # Everbody should have an N value
+    vals = ','.join([f'{stat_values[event_pair][institution].n}' for institution in institutions])
     print(f'N, {vals}', file=stat_sheet)
-    vals = ','.join([f'{stat_values[institution].mean:.0f}' for institution in stat_values])
-    print(f'mean, {vals}', file=stat_sheet)
-    vals = ','.join([f'{stat_values[institution].std_dev:.1f}' for institution in stat_values])
-    print(f'std dev, {vals}', file=stat_sheet)
-    vals = ','.join([f'{stat_values[institution].median:.0f}' for institution in stat_values])
-    print(f'median, {vals}', file=stat_sheet)
-    vals = ','.join([f'{stat_values[institution].mode:.0f}' for institution in stat_values])
-    print(f'mode, {vals}', file=stat_sheet)
-    vals = ','.join([f'{stat_values[institution].min_val:.0f}' for institution in stat_values])
+
+    # The remainder is messy because there will be None values where N < 6 for some institution, and
+    # because different statistics have different formatting rules
+
+    vals = []
+    for institution in institutions:
+      val = stat_values[event_pair][institution].mean
+      if val is None:
+        vals.append('')
+      else:
+        vals.append(f'{val:.0f}')
+    vals = ','.join(vals)
+    print(f'Mean, {vals}', file=stat_sheet)
+
+    vals = []
+    for institution in institutions:
+      val = stat_values[event_pair][institution].std_dev
+      if val is None:
+        vals.append('')
+      else:
+        vals.append(f'{val:.1f}')
+    vals = ','.join(vals)
+    print(f'Std Dev, {vals}', file=stat_sheet)
+
+    vals = []
+    for institution in institutions:
+      val = stat_values[event_pair][institution].median
+      if val is None:
+        vals.append('')
+      else:
+        vals.append(f'{val:.0f}')
+    vals = ','.join(vals)
+    print(f'Median, {vals}', file=stat_sheet)
+
+    vals = []
+    for institution in institutions:
+      val = stat_values[event_pair][institution].mode
+      if val is None:
+        vals.append('')
+      else:
+        vals.append(f'{val:.0f}')
+    vals = ','.join(vals)
+    print(f'Mode, {vals}', file=stat_sheet)
+
+    vals = []
+    for institution in institutions:
+      val = stat_values[event_pair][institution].min_val
+      if val is None:
+        vals.append('')
+      else:
+        vals.append(f'{val:.0f}')
+    vals = ','.join(vals)
     print(f'Min, {vals}', file=stat_sheet)
-    vals = ','.join([f'{stat_values[institution].max_val:.0f}' for institution in stat_values])
+
+    vals = []
+    for institution in institutions:
+      val = stat_values[event_pair][institution].max_val
+      if val is None:
+        vals.append('')
+      else:
+        vals.append(f'{val:.0f}')
+    vals = ','.join(vals)
     print(f'Max, {vals}', file=stat_sheet)
-    vals = ','.join([f'{stat_values[institution].q_1}' for institution in stat_values])
+
+    vals = []
+    for institution in institutions:
+      val = stat_values[event_pair][institution].q_1
+      if val is None:
+        vals.append('')
+      else:
+        vals.append(f'{val:.0f}')
+    vals = ','.join(vals)
     print(f'Q1, {vals}', file=stat_sheet)
-    vals = ','.join([f'{stat_values[institution].q_2}' for institution in stat_values])
+
+    vals = []
+    for institution in institutions:
+      val = stat_values[event_pair][institution].q_2
+      if val is None:
+        vals.append('')
+      else:
+        vals.append(f'{val:.0f}')
+    vals = ','.join(vals)
     print(f'Q2, {vals}', file=stat_sheet)
-    vals = ','.join([f'{stat_values[institution].q_3}' for institution in stat_values])
+
+    vals = []
+    for institution in institutions:
+      val = stat_values[event_pair][institution].q_3
+      if val is None:
+        vals.append('')
+      else:
+        vals.append(f'{val:.0f}')
+    vals = ','.join(vals)
     print(f'Q3, {vals}', file=stat_sheet)
-    vals = ','.join([f'{stat_values[institution].siqr:.1f}' for institution in stat_values])
+
+    vals = []
+    for institution in institutions:
+      val = stat_values[event_pair][institution].siqr
+      if val is None:
+        vals.append('')
+      else:
+        vals.append(f'{val:.1f}')
+    vals = ','.join(vals)
     print(f'SIQR, {vals}', file=stat_sheet)
 
 exit()
