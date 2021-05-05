@@ -18,7 +18,7 @@ if the_file is None:
 file_name = the_file.name
 file_date = datetime.date.fromtimestamp(the_file.stat().st_mtime)
 print('Using:', file_name, file_date.strftime('%B %d, %Y'), file=sys.stderr)
-print('I advise you not to do this. Repent! (or proceed anyway) [R/p] ',
+print('I advise you not to do this. Repent! (or proceed anyway?) [R/p] ',
       end='', file=sys.stderr)
 if input().lower().startswith('p'):
   print('Don’t say you weren’t warned!', file=sys.stderr)
@@ -42,6 +42,7 @@ create table transfers_applied (
   enrollment_session  text not NULL,
   articulation_term   integer not NULL,
   model_status        text not NULL,
+  model_nbr           integer not NULL,
   posted_date         date,
   src_subject text    not NULL,
   src_catalog_nbr     text not NULL,
@@ -105,9 +106,9 @@ num_changed = 0   # Will not change here.
 num_skipped = 0
 
 cols = ['student_id', 'src_institution', 'enrollment_term', 'enrollment_session',
-        'articulation_term', 'model_status', 'posted_date', 'src_subject', 'src_catalog_nbr',
-        'src_designation', 'src_grade', 'src_gpa', 'src_course_id', 'src_offer_nbr',
-        'src_is_repeatable', 'src_description', 'academic_program', 'units_taken',
+        'articulation_term', 'model_status', 'model_nbr', 'posted_date', 'src_subject',
+        'src_catalog_nbr', 'src_designation', 'src_grade', 'src_gpa', 'src_course_id',
+        'src_offer_nbr', 'src_is_repeatable', 'src_description', 'academic_program', 'units_taken',
         'dst_institution', 'dst_designation', 'dst_course_id', 'dst_offer_nbr', 'dst_subject',
         'dst_catalog_nbr', 'dst_grade', 'dst_gpa', 'dst_is_message', 'dst_is_blanket']
 placeholders = ((len(cols)) * '%s,').strip(', ')
@@ -161,13 +162,13 @@ with open('./Logs/populate.log', 'w') as logfile:
         dst_is_blanket = (dst_course_id, dst_offer_nbr) in blankets
 
         value_tuple = (row.student_id, row.src_institution, row.enrollment_term,
-                       row.enrollment_session, row.articulation_term, row.model_status, posted_date,
-                       row.src_subject, src_catalog_nbr, row.src_designation, row.src_grade,
-                       row.src_gpa, row.src_course_id, row.src_offer_nbr, src_is_repeatable,
-                       row.src_description, row.academic_program, row.units_taken,
-                       row.dst_institution, row.dst_designation, row.dst_course_id,
-                       row.dst_offer_nbr, row.dst_subject, dst_catalog_nbr, row.dst_grade,
-                       row.dst_gpa, dst_is_message, dst_is_blanket)
+                       row.enrollment_session, row.articulation_term, row.model_status,
+                       row.transfer_model_nbr, posted_date, row.src_subject, src_catalog_nbr,
+                       row.src_designation, row.src_grade, row.src_gpa, row.src_course_id,
+                       row.src_offer_nbr, src_is_repeatable, row.src_description,
+                       row.academic_program, row.units_taken, row.dst_institution,
+                       row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
+                       dst_catalog_nbr, row.dst_grade, row.dst_gpa, dst_is_message, dst_is_blanket)
         trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) '
                              f'on conflict do nothing',
                              value_tuple)
