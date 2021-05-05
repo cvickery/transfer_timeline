@@ -59,6 +59,7 @@ institution_names = {'BAR': 'Baruch', 'BCC': 'Bronx', 'BKL': 'Brooklyn', 'BMC': 
 
 event_names = {'appl': 'Application',
                'admt': 'Admission',
+               'dein': 'Deposit',
                'matr': 'Matriculation',
                'first_fetch': 'First Evaluation',
                'latest_fetch': 'Latest Evaluation',
@@ -180,7 +181,7 @@ for institution in institutions:
       select * from admissions
        where institution = '{institution}'
          and admit_term = '{admit_term}'
-         and event_type in ('APPL', 'ADMT', 'MATR')
+         and event_type in ('APPL', 'ADMT', 'DEIN', 'MATR')
       """)
   students = defaultdict(events_dict)
   for row in cursor.fetchall():
