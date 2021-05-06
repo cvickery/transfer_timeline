@@ -197,6 +197,7 @@ for institution in institutions:
       from transfers_applied
      where dst_institution ~* '{institution}'
        and articulation_term = {admit_term}
+       and model_status = 'Posted'
   group by student_id
     """)
   for row in cursor.fetchall():
@@ -215,8 +216,8 @@ for institution in institutions:
        and student_id in ({cohort_ids})
     """)
   for row in cursor.fetchall():
-    students[int(row.student_id)]['first_register'] = row.first_date
-    students[int(row.student_id)]['latest_register'] = row.last_date
+    students[int(row.student_id)]['first_enr'] = row.first_date
+    students[int(row.student_id)]['latest_enr'] = row.last_date
 
   # Create a spreadsheet with the cohort's events for debugging/tableauing
   # -----------------------------------------------------------------------------------------------
