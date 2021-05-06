@@ -267,11 +267,11 @@ for institution in institutions:
         quartile_str = f'{s.q_1:.0f} : {s.q_2:.0f} : {s.q_3:.0f}'
         s.siqr = (s.q_3 - s.q_1) / 2.0
         print(f'| Mean | {s.mean:.0f}', file=report)
-        print(f'| Std Dev | {s.std_dev:.1f}', file=report)
         print(f'| Medan | {s.median:.0f}', file=report)
         print(f'| Mode | {s.mode:.0f}', file=report)
         print(f'| Range | {min_max_str}', file=report)
         print(f'| Quartiles | {quartile_str}', file=report)
+        print(f'| Std Dev | {s.std_dev:.1f}', file=report)
         print(f'| SIQR | {s.siqr:.1f}', file=report)
       else:
         print('### Not enough data.', file=report)
