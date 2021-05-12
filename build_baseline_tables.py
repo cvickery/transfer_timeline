@@ -13,7 +13,7 @@ from pathlib import Path
 from pgconnection import PgConnection
 
 # Development connection
-debug = open('./debug', 'w')
+logfile = open('./build_baseline_tables.log', 'w')
 
 # Connect to data sources
 # -------------------------------------------------------------------------------------------------
@@ -80,7 +80,7 @@ with open(session_table_file) as stf:
         m, d, y = row.session_end_date.split('/')
         session_end_date = datetime.date(int(y), int(m), int(d))
       except ValueError as ve:
-        print(f'Session Date situation: {row}\n', file=debug)
+        print(f'Session Date situation: {row}\n', file=logfile)
         continue
       session_key = Session_Key._make([row.institution[0:3], int(row.term), row.session])
       sessions[session_key] = Session._make([first_enrollment_date, open_enrollment_date,
@@ -90,7 +90,7 @@ with open(session_table_file) as stf:
 # for session_key in sorted(sessions.keys()):
 #   if session_key.term % 10 == 6:
 #     print(f'{session_key.institution} {session_key.term} {session_key.session}: '
-#           f'{sessions[session_key]}', file=debug)
+#           f'{sessions[session_key]}', file=logfile)
 trans_cursor.execute("""
 drop table if exists sessions;
 create table sessions (
@@ -145,15 +145,15 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
         requirement_term = int(row.requirement_term)
       except ValueError as ve:
         requirement_term = 0
-      if row.career != 'UGRD' or admit_term < 1199 or admit_term > 1219:
+      if row.career != 'UGRD' or admit_term < 1182:
         continue
       try:
         admittee_key = Admittee_Key._make([int(row.id), int(row.appl_nbr), row.institution[0:3],
                                           admit_term, requirement_term])
       except ValueError as ve:
-        print(f'Admittee Key situation: {row}')
+        print(f'Admittee Key situation: {row}\n', file=logfile)
         continue
-      if row.program_action in ['APPL', 'ADMT', 'DEIN', 'MATR'] \
+      if row.program_action in ['APPL', 'ADMT', 'DEIN', 'MATR', 'WADM'] \
          and row.admit_type in ['TRN', 'TRD']:
         try:
           m, d, y = row.action_date.split('/')
@@ -161,7 +161,7 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
           m, d, y = row.eff_date.split('/')
           effective_date = datetime.date(int(y), int(m), int(d))
         except ValueError as ve:
-          print(f'Admittee Date situation: {row}\n', file=debug)
+          print(f'Admittee Date situation: {row}\n', file=logfile)
           continue
         admittees[admittee_key][row.program_action] = \
             Admission_Event._make([row.admit_type, action_date, effective_date])
@@ -193,7 +193,7 @@ on conflict do nothing;
       admittees[key][event_type].action_date,
       admittees[key][event_type].effective_date))
     if trans_cursor.rowcount == 0:
-      print(f'Admissions Data situation: {trans_cursor.query.decode()}', file=debug)
+      print(f'Admissions Data situation: {trans_cursor.query.decode()}', file=logfile)
 trans_conn.commit()
 
 # Report: difference between action date and effective date
@@ -248,7 +248,7 @@ with open(registrations_table_file, encoding='ascii', errors='backslashreplace')
         mo, da, yr = row.enrollment_add_date.split('/')
         enrollment_date = datetime.date(int(yr), int(mo), int(da))
       except ValueError as ve:
-        print(f'Enrollment date situation: {row}', file=debug)
+        print(f'Enrollment date situation: {row}', file=logfile)
         continue
       first = registration_events[registration_key]['first_registration_date']
       last = registration_events[registration_key]['last_registration_date']
