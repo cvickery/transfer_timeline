@@ -1,4 +1,10 @@
 #! /usr/bin/env python3
+""" Create and populate the transfers_applied table.
+    The "full" CUNYfirst query includes evaluations from Spring 2018 to date. But we started
+    recording daily updates on March 3, 2021, so here, events after March 2, 2021 are skipped, to
+    allow subsequent updates to note changes. (re-evalations)
+    Also, ignore records where the model_status is not "Posted."
+"""
 
 import csv
 import datetime
@@ -17,7 +23,7 @@ if the_file is None:
 
 file_name = the_file.name
 file_date = datetime.date.fromtimestamp(the_file.stat().st_mtime)
-print('Using:', file_name, file_date.strftime('%B %d, %Y'), file=sys.stderr)
+print(f"Using: {file_name} {file_date.strftime('%B %d, %Y')}", file=sys.stderr)
 print('I advise you not to do this. Repent! (or proceed anyway?) [R/p] ',
       end='', file=sys.stderr)
 if input().lower().startswith('p'):
@@ -105,6 +111,8 @@ num_added = 0
 num_changed = 0   # Will not change here.
 num_skipped = 0
 
+march_2_2021 = datetime.date(2021, 3, 2)
+
 cols = ['student_id', 'src_institution', 'enrollment_term', 'enrollment_session',
         'articulation_term', 'model_status', 'model_nbr', 'posted_date', 'src_subject',
         'src_catalog_nbr', 'src_designation', 'src_grade', 'src_gpa', 'src_course_id',
@@ -117,8 +125,7 @@ cols = ','.join(cols)
 with open('./Logs/populate.log', 'w') as logfile:
 
   # There are discrepancies between the number of lines in the .csv file and the number of records
-  # actually found, presumably because of newlines in the comments field. Not to totally checked,
-  # though.
+  # actually found, presumably because of newlines in the comments field.
   num_records = 0
   num_lines = len(open(the_file, newline=None, errors='backslashreplace').readlines()) - 1
   with open(the_file, newline=None, errors='backslashreplace') as csvfile:
@@ -148,6 +155,11 @@ with open('./Logs/populate.log', 'w') as logfile:
         else:
           # Missing posted_date
           posted_date = datetime.date(1901, 1, 1)
+
+        # Skip records that are not posted or which have a posted_date greater than March 2, 2021
+        if row.model_status != 'Posted' or posted_date > march_2_2021:
+          num_skipped += 1
+          continue
 
         src_course_id = int(row.src_course_id)
         src_offer_nbr = int(row.src_offer_nbr)

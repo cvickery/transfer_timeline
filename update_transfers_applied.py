@@ -1,8 +1,7 @@
 #! /usr/local/bin/python3
 """ Add new rows to transfers_applied.
-    Using query data that covers the past week, so skip rows that already exist.
-    Since the posted_date is part of the primary key, there is no longer a need to check the posted
-    date for redundancy, only for info in the update_history table.
+    Using query data that covers the past week, so skip rows that already exist. Keep a record of
+    all primary keys to avoid inserts that will fail.
 """
 
 import csv
@@ -96,6 +95,11 @@ with open(f'./Logs/update_{file_date.isoformat()}.log', 'w') as logfile:
           print(f'    {num_records:6,}/{num_lines:6,}\r', end='', file=sys.stderr)
 
         row = Row._make(line)
+
+        if row.model_status != 'Posted':
+          num_skipped += 1
+          continue
+
         if '/' in row.posted_date:
           mo, da, yr = row.posted_date.split('/')
           posted_date = datetime.date(int(yr), int(mo), int(da))
@@ -138,23 +142,23 @@ with open(f'./Logs/update_{file_date.isoformat()}.log', 'w') as logfile:
   # Report difference between num_lines and num_records.
   print(f'Lines: {num_lines}\nRecords: {num_records}', file=logfile)
 
-# Prepare summary info
-if max_new_post is None:
-  max_new_post = 'NULL'
-else:
-  max_new_post = f"'{max_new_post}'"
+  # Prepare summary info
+  if max_new_post is None:
+    max_new_post = 'NULL'
+  else:
+    max_new_post = f"'{max_new_post}'"
 
-trans_cursor.execute(f"""
-    insert into update_history values(
+  trans_cursor.execute(f"""
+      insert into update_history values(
+            '{file_name}', '{file_date}', {max_new_post},
+            {num_records}, {num_added}, {num_skipped})
+            on conflict do nothing
+    """)
+  if trans_cursor.rowcount == 0:
+    print(f"""Update History conflict\n new:
           '{file_name}', '{file_date}', {max_new_post},
           {num_records}, {num_added}, {num_skipped})
-          on conflict do nothing
-  """)
-if trans_cursor.rowcount == 0:
-  print(f"""Update History conflict\n new:
-        '{file_name}', '{file_date}', {max_new_post},
-        {num_records}, {num_added}, {num_skipped})
-        """, file=logfile)
+          """, file=logfile)
 
 trans_conn.commit()
 trans_conn.close()
