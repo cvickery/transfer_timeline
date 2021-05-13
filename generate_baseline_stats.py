@@ -41,6 +41,17 @@ from collections import namedtuple, defaultdict
 from pgconnection import PgConnection
 
 
+class Term:
+  """ CF term code and semester name
+  """
+  def __init__(self, term_code, semester_name):
+    self.term = term_code
+    self.name = semester_name
+
+  def __repr__(self):
+    return self.name
+
+
 class Stats:
   """ mean, median, mode, etc.
   """
@@ -60,6 +71,7 @@ institution_names = {'BAR': 'Baruch', 'BCC': 'Bronx', 'BKL': 'Brooklyn', 'BMC': 
 event_names = {'appl': 'Application',
                'admt': 'Admission',
                'dein': 'Deposit',
+               'wadm': '',
                'matr': 'Matriculation',
                'first_fetch': 'First Evaluation',
                'latest_fetch': 'Latest Evaluation',
@@ -89,16 +101,17 @@ def events_dict():
   return events
 
 
-# Initialize
+# Validate Command Line
 # -------------------------------------------------------------------------------------------------
 parser = argparse.ArgumentParser('Timelines by Cohort')
-parser.add_argument('-t', '--admit_term', default=None)  # Or "articulation" term
-parser.add_argument('-i', '--institutions', nargs='*')
-parser.add_argument('-e', '--event_pairs', nargs='*')
+parser.add_argument('-t', '--admit_terms', type=int, nargs='*', default=[])
+parser.add_argument('-i', '--institutions', nargs='*', default=[])
+parser.add_argument('-e', '--event_pairs', nargs='*', default=[])
 parser.add_argument('-d', '--debug', action='store_true')
 args = parser.parse_args()
 
 event_pairs = []
+event_type_list = '\n  '.join(event_types)
 if len(args.event_pairs) < 1:
   print('NOTICE: no event pairs. No statistical reports will be produced.')
 for arg in args.event_pairs:
@@ -110,124 +123,132 @@ for arg in args.event_pairs:
       raise ValueError('Unrecognized event_pair')
   except ValueError as ve:
     sys.exit(f'“{arg}” does not match earlier:later event_pair structure.\n'
-             f'Valid event types are {event_types}')
+             f'Valid event types are:\n  {event_type_list}')
 
-if args.admit_term is None or args.institutions is None:
-  sys.exit(f'Missing cohort information: -t admit_term -i institutions event_pairs')
+if len(args.admit_terms) < 1 or len(args.institutions) < 1:
+  sys.exit(f'Usage: -t admit_term... -i institution... -e event_pair...')
+
 try:
-  admit_term = int(args.admit_term)
-  year = 1900 + 100 * int(admit_term / 1000) + int(admit_term / 10) % 100
-  assert year > 1989 and year < 2026, f'Admit Term year ({year}) must be between 1990 and 2025'
-  month = admit_term % 10
-  if month == 2:
-    semester = 'Spring'
-  elif month == 9:
-    semester = 'Fall'
-  else:
-    print(f'Warning: month ({month}) should be 2 for Spring or 9 for Fall.\n'
-          '  Continue anyway? (yN) ',
-          end='', file=sys.stderr)
-    if not input().lower().startswith('y'):
-      exit('Exit')
-    semester = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month - 1]
-  semester = f'{semester} {year}'
+  admit_terms = []
+  for admit_term in args.admit_terms:
+    year = 1900 + 100 * int(admit_term / 1000) + int(admit_term / 10) % 100
+    assert year > 1989 and year < 2026, f'Admit Term year ({year}) must be between 1990 and 2025'
+    month = admit_term % 10
+    if month == 2:
+      semester = 'Spring'
+    elif month == 6:
+      semester = 'Summer'
+    elif month == 9:
+      semester = 'Fall'
+    else:
+      print(f'{admit_term}: month ({month}) should be 2 for Spring, 6 for Summer, or 9 for Fall.\n'
+            '  Continue anyway? (yN) ',
+            end='', file=sys.stderr)
+      if not input().lower().startswith('y'):
+        exit('Exit')
+      semester = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month - 1]
+    semester = f'{semester} {year}'
+    admit_terms.append(Term(admit_term, semester))
+
 except ValueError as ve:
   sys.exit(f'“{args.admit_term}” is not a valid CUNY term')
 
 institutions = [i.strip('01').upper() for i in args.institutions]
-if len(institutions) < 1:
-  sys.exit('No institutions')
 for institution in institutions:
-  if institution not in institutions:
-    sys.exit(f'“{args.institution}” is not a valid CUNY institution')
+  if institution not in institution_names.keys():
+    sys.exit(f'“{institution}” is not a valid CUNY institution')
 
 conn = PgConnection('cuny_transfers')
 cursor = conn.cursor()
 
-# Get session events
-# -------------------------------------------------------------------------------------------------
-Session = namedtuple('Session', 'institution term session first_registration open_registration '
-                     'last_registration classes_start classes_end ')
-cursor.execute(f"""
-    select * from sessions where institution = '{institution}' and term = {admit_term}
-    """)
-session = None
-for row in cursor.fetchall():
-  if session is None or row.session == '1':
-    session = Session._make(row)
-if session is None:
-  sys.exit(f'No session found for {admit_term}')
-
-# Loop through institutions
+# Initialize Data Structures
 # =================================================================================================
+""" A cohort is a set of (students, institution, admit_term). Collect all 12 event dates for each
+    cohort, then report each measure for each cohort.
+"""
 """ Generate separate reports in Markdown for each institution.
     Generate separate spreadsheets for each measure, with colleges as columns and statistical
     values as the rows. Preserve the order of the colleges from the command line.
 """
-# Collect statistic values. Index outer dict by measure (separate sheets), inner dict by institution
-stat_values = defaultdict(defaultdict)
-
-
-# Build datasets for each institution's student cohort
-# =================================================================================================
+# Cohorts key is (institution, term), value is a dict with student_id as key, and dict of event
+# dates as their values.
+#   cohorts[(QNS, 1212)] = {12345678: {appl: 2020-10-10, admt: 2020-10-20, wadm: ...},
+#                           87654321: {appl: 2020-11-11, admt: 2020-11-22, wadm: ...},
+#                           ...}
+cohorts = dict()
 for institution in institutions:
-  # Get students and their admission events
-  # -----------------------------------------------------------------------------------------------
-  Admission = namedtuple('Admission', 'student_id application_number institution '
-                         'admit_term requirement_term event_type admit_type action_date '
-                         'effective_date ')
-  cursor.execute(f"""
-      select * from admissions
-       where institution = '{institution}'
-         and admit_term = '{admit_term}'
-         and event_type in ('APPL', 'ADMT', 'DEIN', 'MATR')
+  for admit_term in sorted(admit_terms, key=lambda x: x.term):
+    cohort_key = (institution, admit_term)
+    student_ids = set()
+    cohorts[cohort_key] = defaultdict(dict)
+
+    # Get session events, which are the same for all students in the cohort
+    # ---------------------------------------------------------------------------------------------
+    Session = namedtuple('Session', 'institution term session first_registration open_registration '
+                         'last_registration classes_start classes_end ')
+    cursor.execute(f"""
+        select * from sessions where institution = '{institution}' and term = {admit_term.term}
+        """)
+    session = None
+    for row in cursor.fetchall():
+      if session is None or row.session == '1':
+        session = Session._make(row)
+    if session is None:
+      sys.exit(f'No session found for {admit_term}')
+
+    # Add the students and their admission events to the cohort
+    # ---------------------------------------------------------------------------------------------
+    cursor.execute(f"""
+        select student_id, event_type, effective_date from admissions
+         where institution = '{institution}'
+           and admit_term = {admit_term.term}
+           and event_type in ('APPL', 'ADMT', 'DEIN', 'MATR', 'WADM')
+        """)
+    for row in cursor.fetchall():
+      student_ids.add(int(row.student_id))
+      cohorts[cohort_key][int(row.student_id)][row.event_type.lower()] = row.effective_date
+    print(f'{len(cohorts[cohort_key]):,} students in {cohort_key} cohort.', file=sys.stderr)
+    assert len(student_ids) == len(cohorts[cohort_key])
+    student_id_list = ','.join(f'{id}' for id in student_ids)
+
+    # Transfers Applied dates
+    # ---------------------------------------------------------------------------------------------
+    cursor.execute(f"""
+      select student_id, min(posted_date), max(posted_date)
+        from transfers_applied
+       where dst_institution ~* '{institution}'
+         and articulation_term = {admit_term.term}
+         and student_id in ({student_id_list})
+    group by student_id
       """)
-  students = defaultdict(events_dict)
-  for row in cursor.fetchall():
-    students[int(row.student_id)][row.event_type.lower()] = row.effective_date
+    for row in cursor.fetchall():
+      student_id = int(row.student_id)
+      cohorts[cohort_key][student_id]['first_fetch'] = row.min
+      cohorts[cohort_key][student_id]['latest_fetch'] = row.max
 
-  if args.debug:
-    print(f'{len(students):,} students in cohort', file=sys.stderr)
+    # Enrollment dates
+    # ---------------------------------------------------------------------------------------------
+    cursor.execute(f"""
+      select student_id, first_date, last_date
+        from registrations
+       where institution ~* '{institution}'
+         and term = {admit_term.term}
+         and student_id in ({student_id_list})
+      """)
+    for row in cursor.fetchall():
+      cohorts[cohort_key][student_id]['first_enr'] = row.first_date
+      cohorts[cohort_key][student_id]['latest_enr'] = row.last_date
 
-  # Transfers Applied dates
-  # -----------------------------------------------------------------------------------------------
-  cursor.execute(f"""
-    select student_id, min(posted_date), max(posted_date)
-      from transfers_applied
-     where dst_institution ~* '{institution}'
-       and articulation_term = {admit_term}
-       and model_status = 'Posted'
-  group by student_id
-    """)
-  for row in cursor.fetchall():
-    if int(row.student_id) in students.keys():
-      students[row.student_id]['first_fetch'] = row.min
-      students[row.student_id]['latest_fetch'] = row.max
-
-  # Registration dates
-  # -----------------------------------------------------------------------------------------------
-  cohort_ids = ','.join([f'{student_id}' for student_id in students.keys()])
-  cursor.execute(f"""
-    select student_id, first_date, last_date
-      from registrations
-     where institution ~* '{institution}'
-       and term = {admit_term}
-       and student_id in ({cohort_ids})
-    """)
-  for row in cursor.fetchall():
-    students[int(row.student_id)]['first_enr'] = row.first_date
-    students[int(row.student_id)]['latest_enr'] = row.last_date
-
-  # Create a spreadsheet with the cohort's events for debugging/tableauing
-  # -----------------------------------------------------------------------------------------------
-  with open(f'./timelines/{institution}-{admit_term}.csv', 'w') as spreadsheet:
-    print('Student ID,', ','.join([f'{event_names[name]}' for name in event_names.keys()]),
-          file=spreadsheet)
-    for student_id in students.keys():
-      dates = ','.join([f'{students[student_id][event_date]}' for event_date in event_types])
-      print(f'{student_id}, {dates}', file=spreadsheet)
-
+    # Create a spreadsheet with the cohort's events for debugging/tableauing
+    # ---------------------------------------------------------------------------------------------
+    with open(f'./timelines/{institution}-{admit_term.term}.csv', 'w') as spreadsheet:
+      print('Student ID,', ','.join([f'{event_names[name]}' for name in event_names.keys()]),
+            file=spreadsheet)
+      for student_id in student_ids:
+        dates = ','.join([f'{cohorts[cohort_key][student_id][event_date]}' for event_date in event_types])
+        print(f'{student_id}, {dates}', file=spreadsheet)
+  exit()
   # For each measure, generate a Markdown report, and collect stats for the measures spreadsheets
   # -----------------------------------------------------------------------------------------------
   for event_pair in event_pairs:

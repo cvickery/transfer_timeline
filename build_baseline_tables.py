@@ -28,7 +28,7 @@ session_table_file = None
 for file in session_table_files:
   if session_table_file is None or file.stat().st_mtime > session_table_file.stat().st_mtime:
     session_table_file = file
-print(f'Session Table: {session_table_file}', file=sys.stderr)
+print(f'Session Table file: {session_table_file}', file=sys.stderr)
 
 # Admissions
 admissions_table_files = Path('./Admissions_Registrations').glob('*ADMISSIONS*')
@@ -36,7 +36,7 @@ admissions_table_file = None
 for file in admissions_table_files:
   if admissions_table_file is None or file.stat().st_mtime > admissions_table_file.stat().st_mtime:
     admissions_table_file = file
-print(f'Admissions: {admissions_table_file}', file=sys.stderr)
+print(f'Admissions file: {admissions_table_file}', file=sys.stderr)
 
 # Registrations
 registrations_table_files = Path('./Admissions_Registrations').glob('*STUDENT*')
@@ -45,7 +45,7 @@ for file in registrations_table_files:
   if (registrations_table_file is None
      or file.stat().st_mtime > registrations_table_file.stat().st_mtime):
     registrations_table_file = file
-print(f'Registrations: {registrations_table_file}', file=sys.stderr)
+print(f'Registrations file: {registrations_table_file}', file=sys.stderr)
 
 
 # Sessions Cache
@@ -122,7 +122,7 @@ admittees = defaultdict(dict)
 Admittee_Key = namedtuple('Admittee_key',
                           'student_id application_number institution admit_term, requirement_term')
 Admission_Event = namedtuple('Admission_Event',
-                             'admit_type action_date effective_date')
+                             'admit_type event_type action_reason action_date effective_date')
 """
     "ID","Career","Career Nbr","Appl Nbr","Prog Nbr","Institution","Acad Prog","Status","Eff
     Date","Effective Sequence","Program Action","Action Date","Action Reason","Admit Term","Expected
@@ -133,6 +133,7 @@ Admission_Event = namedtuple('Admission_Event',
     Complete","Completed Date","Application Date","Graduation Date","Acad Level","Override
     Deposit","External Application"
 """
+print('Read Admissions file', file=sys.stderr)
 with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as atf:
   admissions_reader = csv.reader(atf)
   for line in admissions_reader:
@@ -164,8 +165,12 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
           print(f'Admittee Date situation: {row}\n', file=logfile)
           continue
         admittees[admittee_key][row.program_action] = \
-            Admission_Event._make([row.admit_type, action_date, effective_date])
-print(f'{len(admittees.keys()):,} Admittees', file=sys.stderr)
+            Admission_Event._make([row.admit_type,
+                                   row.program_action,
+                                   row.action_reason,
+                                   action_date,
+                                   effective_date])
+print(f'{len(admittees.keys()):,} Admittees\nBuild admissions table', file=sys.stderr)
 
 trans_cursor.execute("""
 drop table if exists admissions;
@@ -177,6 +182,7 @@ admit_term int,
 requirement_term int,
 event_type text,
 admit_type text,
+action_reason text,
 action_date date,
 effective_date date,
 primary key (student_id, application_number, institution, admit_term, requirement_term, event_type)
@@ -185,11 +191,12 @@ primary key (student_id, application_number, institution, admit_term, requiremen
 for key in admittees.keys():
   for event_type in admittees[key].keys():
     trans_cursor.execute(f"""
-insert into admissions values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+insert into admissions values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 on conflict do nothing;
 """, (key.student_id, key.application_number, key.institution, key.admit_term, key.requirement_term,
       event_type,
       admittees[key][event_type].admit_type,
+      admittees[key][event_type].action_reason,
       admittees[key][event_type].action_date,
       admittees[key][event_type].effective_date))
     if trans_cursor.rowcount == 0:
@@ -209,12 +216,13 @@ with open('./reports/action-effective_differences.csv', 'w') as aed:
     print(f'{days:4}, {counts[days]}', file=aed)
 
 
-# Registraton Events
+# registraton_factory()
 # -------------------------------------------------------------------------------------------------
 def registration_factory():
   return {'first_registration_date': None, 'last_registration_date': None}
 
 
+# Process registration
 """
     "ID","Career","Institution","Term","Class Nbr","Course Career","Session","Student Enrollment
     Status","Enrollment Status Reason","Last Enrollment Action","Enrollment Add Date","Enrollment
@@ -230,7 +238,7 @@ Registration_Key = namedtuple('Registration_Key', 'student_id institution term')
 registration_events = defaultdict(registration_factory)
 m = 0
 n = len(open(registrations_table_file, encoding='ascii', errors='backslashreplace').readlines()) - 1
-print('Read Registrations', file=sys.stderr)
+print('Read Registrations file', file=sys.stderr)
 with open(registrations_table_file, encoding='ascii', errors='backslashreplace') as rtf:
   registrations_reader = csv.reader(rtf)
   for line in registrations_reader:
