@@ -13,7 +13,7 @@ from collections import namedtuple
 from pathlib import Path
 from pgconnection import PgConnection
 
-possibles = Path('/Users/vickery/transfers_applied/downloads').glob('*FULL*')
+possibles = Path('./downloads').glob('*FULL*')
 the_file = None
 for possible in possibles:
   if the_file is None or possible.stat().st_mtime > the_file.stat().st_mtime:
