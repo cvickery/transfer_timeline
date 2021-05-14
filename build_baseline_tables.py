@@ -118,11 +118,48 @@ trans_conn.commit()
 
 # Admissions Table
 # -------------------------------------------------------------------------------------------------
+""" First build the program_reasons table in order to have the descriptions of the program actions.
+"""
+trans_cursor.execute("""
+    drop table if exists program_reasons;
+    create table program_reasons (
+    institution text,
+    program_action text,
+    action_reason text,
+    description text,
+    primary key (institution, program_action, action_reason)
+    );
+    """)
+with open('./Admissions_Registrations/prog_reason_table.csv') as infile:
+  reader = csv.reader(infile)
+  for line in reader:
+    if reader.line_num == 1:
+      cols = [col.lower().replace(' ', '_') for col in line]
+      Row = namedtuple('Row', cols)
+    else:
+      row = Row._make(line)
+      if row.setid.startswith('GRD') or row.setid.startswith('UAC') or row.status != 'A':
+        continue
+      description = row.short_description
+      if len(row.description) > len(description):
+        description = row.description
+      if len(row.long_description) > len(description):
+        description = row.long_description
+      institution = row.setid[0:3]
+      trans_cursor.execute(f"""
+    insert into program_reasons values('{institution}',
+                                       '{row.program_action}',
+                                       '{row.action_reason}',
+                                       '{description}')
+    """)
+
+""" Now build the admissions table.
+"""
 admittees = defaultdict(dict)
 Admittee_Key = namedtuple('Admittee_key',
                           'student_id application_number institution admit_term, requirement_term')
 Admission_Event = namedtuple('Admission_Event',
-                             'admit_type event_type action_reason action_date effective_date')
+                             'admit_type program_action action_reason action_date effective_date')
 """
     "ID","Career","Career Nbr","Appl Nbr","Prog Nbr","Institution","Acad Prog","Status","Eff
     Date","Effective Sequence","Program Action","Action Date","Action Reason","Admit Term","Expected
@@ -174,31 +211,37 @@ print(f'{len(admittees.keys()):,} Admittees\nBuild admissions table', file=sys.s
 
 trans_cursor.execute("""
 drop table if exists admissions;
+
 create table admissions (
 student_id int,
 application_number int,
 institution text,
 admit_term int,
 requirement_term int,
-event_type text,
 admit_type text,
+program_action text,
 action_reason text,
 action_date date,
 effective_date date,
-primary key (student_id, application_number, institution, admit_term, requirement_term, event_type)
+primary key (student_id,
+             application_number,
+             institution,
+             admit_term,
+             requirement_term,
+             program_action)
 );
 """)
 for key in admittees.keys():
-  for event_type in admittees[key].keys():
+  for program_action in admittees[key].keys():
     trans_cursor.execute(f"""
 insert into admissions values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 on conflict do nothing;
 """, (key.student_id, key.application_number, key.institution, key.admit_term, key.requirement_term,
-      event_type,
-      admittees[key][event_type].admit_type,
-      admittees[key][event_type].action_reason,
-      admittees[key][event_type].action_date,
-      admittees[key][event_type].effective_date))
+      admittees[key][program_action].admit_type,
+      program_action,
+      admittees[key][program_action].action_reason,
+      admittees[key][program_action].action_date,
+      admittees[key][program_action].effective_date))
     if trans_cursor.rowcount == 0:
       print(f'Admissions Data situation: {trans_cursor.query.decode()}', file=logfile)
 trans_conn.commit()
@@ -206,9 +249,9 @@ trans_conn.commit()
 # Report: difference between action date and effective date
 counts = defaultdict(int)
 for admittee_key in admittees.keys():
-  for event_type in admittees[admittee_key].keys():
-    delta = round((((admittees[admittee_key][event_type].effective_date
-                     - admittees[admittee_key][event_type].action_date).days)) / 7)
+  for program_action in admittees[admittee_key].keys():
+    delta = round((((admittees[admittee_key][program_action].effective_date
+                     - admittees[admittee_key][program_action].action_date).days)) / 7)
     counts[delta] += 1
 with open('./reports/action-effective_differences.csv', 'w') as aed:
   print('Weeks, Frequency', file=aed)

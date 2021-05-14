@@ -68,18 +68,17 @@ institution_names = {'BAR': 'Baruch', 'BCC': 'Bronx', 'BKL': 'Brooklyn', 'BMC': 
                      'SOJ': 'Journalism', 'SPH': 'Public Health', 'SPS': 'SPS', 'YRK': 'York'}
 
 
-event_names = {'appl': 'Application',
-               'admt': 'Admission',
-               'dein': 'Deposit',
-               'wadm': '',
-               'matr': 'Matriculation',
-               'first_fetch': 'First Evaluation',
-               'latest_fetch': 'Latest Evaluation',
-               'first_enr': 'First Enrollment',
-               'latest_enr': 'Latest Enrollment',
+event_names = {'appl': 'Apply',
+               'admt': 'Admit',
+               'dein': 'Commit',
+               'wadm': 'Admin',
+               'matr': 'Matric',
+               'first_fetch': 'First Eval',
+               'latest_fetch': 'Latest Eval',
                'start_reg': 'Start Registration',
-               'open_reg': 'Open Registration',
-               'first_cls': 'Classes Start'
+               'first_cls': 'Start Classes',
+               'first_enr': 'First Registered',
+               'latest_enr': 'Latest Registered',
                }
 event_types = [key for key in event_names.keys()]
 
@@ -95,8 +94,8 @@ def events_dict():
   """ Factory method to produce default dates (None) for a student's events record.
   """
   events = {key: None for key in event_types}
+  # Session info is same for all students in cohort
   events['start_reg'] = session.first_registration
-  events['open_reg'] = session.open_registration
   events['first_cls'] = session.classes_start
   return events
 
@@ -111,9 +110,9 @@ parser.add_argument('-d', '--debug', action='store_true')
 args = parser.parse_args()
 
 event_pairs = []
-event_type_list = '\n  '.join(event_types)
+event_type_list = '\n  '.join([t for t in event_types if t != 'wadm'])
 if len(args.event_pairs) < 1:
-  print('NOTICE: no event pairs. No statistical reports will be produced.')
+  print('NOTICE: no event pairs. No statistical reports will be produced.', file=sys.stderr)
 for arg in args.event_pairs:
   try:
     earlier, later = arg.lower().split(':')
@@ -179,9 +178,9 @@ cursor = conn.cursor()
 cohorts = dict()
 for institution in institutions:
   for admit_term in sorted(admit_terms, key=lambda x: x.term):
-    cohort_key = (institution, admit_term)
+    cohort_key = (institution, admit_term.term)
     student_ids = set()
-    cohorts[cohort_key] = defaultdict(dict)
+    cohorts[cohort_key] = defaultdict(events_dict)
 
     # Get session events, which are the same for all students in the cohort
     # ---------------------------------------------------------------------------------------------
@@ -200,19 +199,27 @@ for institution in institutions:
     # Add the students and their admission events to the cohort
     # ---------------------------------------------------------------------------------------------
     cursor.execute(f"""
-        select student_id, event_type, effective_date from admissions
+        select student_id, program_action, action_reason, effective_date from admissions
          where institution = '{institution}'
            and admit_term = {admit_term.term}
-           and event_type in ('APPL', 'ADMT', 'DEIN', 'MATR', 'WADM')
+           and program_action in ('APPL', 'ADMT', 'DEIN', 'MATR', 'WADM')
         """)
     for row in cursor.fetchall():
       student_ids.add(int(row.student_id))
-      cohorts[cohort_key][int(row.student_id)][row.event_type.lower()] = row.effective_date
+      event_type = row.program_action.lower()
+      if event_type == 'wadm':
+        if row.action_reason == '':
+          event_value = 'WADM'
+        else:
+          event_value = row.action_reason
+      else:
+        event_value = row.effective_date
+      cohorts[cohort_key][int(row.student_id)][event_type] = event_value
     print(f'{len(cohorts[cohort_key]):,} students in {cohort_key} cohort.', file=sys.stderr)
     assert len(student_ids) == len(cohorts[cohort_key])
     student_id_list = ','.join(f'{id}' for id in student_ids)
 
-    # Transfers Applied dates
+    # Transfers-Applied (credits evaluated) dates
     # ---------------------------------------------------------------------------------------------
     cursor.execute(f"""
       select student_id, min(posted_date), max(posted_date)
@@ -236,17 +243,19 @@ for institution in institutions:
          and term = {admit_term.term}
          and student_id in ({student_id_list})
       """)
+    if cursor.rowcount == 0:
+      sys.exit(cursor.query)
     for row in cursor.fetchall():
-      cohorts[cohort_key][student_id]['first_enr'] = row.first_date
-      cohorts[cohort_key][student_id]['latest_enr'] = row.last_date
+      cohorts[cohort_key][row.student_id]['first_enr'] = row.first_date
+      cohorts[cohort_key][row.student_id]['latest_enr'] = row.last_date
 
     # Create a spreadsheet with the cohort's events for debugging/tableauing
     # ---------------------------------------------------------------------------------------------
     with open(f'./timelines/{institution}-{admit_term.term}.csv', 'w') as spreadsheet:
       print('Student ID,', ','.join([f'{event_names[name]}' for name in event_names.keys()]),
             file=spreadsheet)
-      for student_id in student_ids:
-        dates = ','.join([f'{cohorts[cohort_key][student_id][event_date]}' for event_date in event_types])
+      for student_id in sorted(student_ids):
+        dates = ','.join([f'{cohorts[cohort_key][student_id][event]}' for event in event_types])
         print(f'{student_id}, {dates}', file=spreadsheet)
   exit()
   # For each measure, generate a Markdown report, and collect stats for the measures spreadsheets
@@ -287,13 +296,13 @@ for institution in institutions:
         s.q_3 = quartile_list[2]
         quartile_str = f'{s.q_1:.0f} : {s.q_2:.0f} : {s.q_3:.0f}'
         s.siqr = (s.q_3 - s.q_1) / 2.0
-        print(f'| Mean | {s.mean:.0f}', file=report)
         print(f'| Medan | {s.median:.0f}', file=report)
+        print(f'| Mean | {s.mean:.0f}', file=report)
         print(f'| Mode | {s.mode:.0f}', file=report)
         print(f'| Range | {min_max_str}', file=report)
         print(f'| Quartiles | {quartile_str}', file=report)
-        print(f'| Std Dev | {s.std_dev:.1f}', file=report)
         print(f'| SIQR | {s.siqr:.1f}', file=report)
+        print(f'| Std Dev | {s.std_dev:.1f}', file=report)
       else:
         print('### Not enough data.', file=report)
 
@@ -314,26 +323,6 @@ for event_pair in event_pairs:
 
     vals = []
     for institution in institutions:
-      val = stat_values[event_pair][institution].mean
-      if val is None:
-        vals.append('')
-      else:
-        vals.append(f'{val:.0f}')
-    vals = ','.join(vals)
-    print(f'Mean, {vals}', file=stat_sheet)
-
-    vals = []
-    for institution in institutions:
-      val = stat_values[event_pair][institution].std_dev
-      if val is None:
-        vals.append('')
-      else:
-        vals.append(f'{val:.1f}')
-    vals = ','.join(vals)
-    print(f'Std Dev, {vals}', file=stat_sheet)
-
-    vals = []
-    for institution in institutions:
       val = stat_values[event_pair][institution].median
       if val is None:
         vals.append('')
@@ -341,6 +330,16 @@ for event_pair in event_pairs:
         vals.append(f'{val:.0f}')
     vals = ','.join(vals)
     print(f'Median, {vals}', file=stat_sheet)
+
+    vals = []
+    for institution in institutions:
+      val = stat_values[event_pair][institution].mean
+      if val is None:
+        vals.append('')
+      else:
+        vals.append(f'{val:.0f}')
+    vals = ','.join(vals)
+    print(f'Mean, {vals}', file=stat_sheet)
 
     vals = []
     for institution in institutions:
@@ -411,5 +410,15 @@ for event_pair in event_pairs:
         vals.append(f'{val:.1f}')
     vals = ','.join(vals)
     print(f'SIQR, {vals}', file=stat_sheet)
+
+    vals = []
+    for institution in institutions:
+      val = stat_values[event_pair][institution].std_dev
+      if val is None:
+        vals.append('')
+      else:
+        vals.append(f'{val:.1f}')
+    vals = ','.join(vals)
+    print(f'Std Dev, {vals}', file=stat_sheet)
 
 exit()
