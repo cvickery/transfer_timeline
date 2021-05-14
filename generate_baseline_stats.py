@@ -37,6 +37,7 @@ import datetime
 import statistics
 
 from collections import namedtuple, defaultdict
+from openpyxl import Workbook
 
 from pgconnection import PgConnection
 
@@ -52,6 +53,25 @@ class Term:
     return self.name
 
 
+# Statistics
+# -------------------------------------------------------------------------------------------------
+""" Descriptive statistics for a cohort's measures
+      stat_values[institution][admit_term][measure].n = 12345, etc
+"""
+
+
+def institution_factory():
+  return defaultdict(term_factory)
+
+
+def term_factory():
+  return defaultdict(stat_factory)
+
+
+def stat_factory():
+  return Stats()
+
+
 class Stats:
   """ mean, median, mode, etc.
   """
@@ -60,6 +80,10 @@ class Stats:
         self.q_1 = self.q_2 = self.q_3 = self.siqr = None
 
 
+stat_values = defaultdict(institution_factory)
+
+# App Parameters
+# -------------------------------------------------------------------------------------------------
 institution_names = {'BAR': 'Baruch', 'BCC': 'Bronx', 'BKL': 'Brooklyn', 'BMC': 'BMCC',
                      'CSI': 'Staten Island', 'CTY': 'City', 'HOS': 'Hostos', 'HTR': 'Hunter',
                      'JJC': 'John Jay', 'KCC': 'Kingsborough', 'LAG': 'LaGuardia', 'LEH': 'Lehman',
@@ -71,7 +95,6 @@ institution_names = {'BAR': 'Baruch', 'BCC': 'Bronx', 'BKL': 'Brooklyn', 'BMC': 
 event_names = {'appl': 'Apply',
                'admt': 'Admit',
                'dein': 'Commit',
-               'wadm': 'Admin',
                'matr': 'Matric',
                'first_fetch': 'First Eval',
                'latest_fetch': 'Latest Eval',
@@ -79,6 +102,7 @@ event_names = {'appl': 'Apply',
                'first_cls': 'Start Classes',
                'first_enr': 'First Registered',
                'latest_enr': 'Latest Registered',
+               'wadm': 'Admin',
                }
 event_types = [key for key in event_names.keys()]
 
@@ -97,6 +121,7 @@ def events_dict():
   # Session info is same for all students in cohort
   events['start_reg'] = session.first_registration
   events['first_cls'] = session.classes_start
+  events['wadm'] = []   # List of action/reason events with their dates
   return events
 
 
@@ -194,7 +219,8 @@ for institution in institutions:
       if session is None or row.session == '1':
         session = Session._make(row)
     if session is None:
-      sys.exit(f'No session found for {admit_term}')
+      print(f'No session found for {institution_names[institution]} {admit_term}')
+      continue
 
     # Add the students and their admission events to the cohort
     # ---------------------------------------------------------------------------------------------
@@ -209,12 +235,13 @@ for institution in institutions:
       event_type = row.program_action.lower()
       if event_type == 'wadm':
         if row.action_reason == '':
-          event_value = 'WADM'
+          event_name = 'WADM'
         else:
-          event_value = row.action_reason
+          event_name = row.action_reason
+        cohorts[cohort_key][int(row.student_id)][event_type].append(f'{row.effective_date} '
+                                                                    f'{event_name}')
       else:
-        event_value = row.effective_date
-      cohorts[cohort_key][int(row.student_id)][event_type] = event_value
+        cohorts[cohort_key][int(row.student_id)][event_type] = row.effective_date
     print(f'{len(cohorts[cohort_key]):,} students in {cohort_key} cohort.', file=sys.stderr)
     assert len(student_ids) == len(cohorts[cohort_key])
     student_id_list = ','.join(f'{id}' for id in student_ids)
@@ -243,8 +270,6 @@ for institution in institutions:
          and term = {admit_term.term}
          and student_id in ({student_id_list})
       """)
-    if cursor.rowcount == 0:
-      sys.exit(cursor.query)
     for row in cursor.fetchall():
       cohorts[cohort_key][row.student_id]['first_enr'] = row.first_date
       cohorts[cohort_key][row.student_id]['latest_enr'] = row.last_date
@@ -255,57 +280,63 @@ for institution in institutions:
       print('Student ID,', ','.join([f'{event_names[name]}' for name in event_names.keys()]),
             file=spreadsheet)
       for student_id in sorted(student_ids):
-        dates = ','.join([f'{cohorts[cohort_key][student_id][event]}' for event in event_types])
+        dates = ','.join([f'{cohorts[cohort_key][student_id][event]}' for event in event_types
+                         if event != 'wadm'])
+        if len(cohorts[cohort_key][student_id]['wadm']) == 0:
+          dates += ',None'
+        else:
+          dates += ',' + '; '.join(sorted(cohorts[cohort_key][student_id]['wadm']))
         print(f'{student_id}, {dates}', file=spreadsheet)
-  exit()
-  # For each measure, generate a Markdown report, and collect stats for the measures spreadsheets
-  # -----------------------------------------------------------------------------------------------
-  for event_pair in event_pairs:
-    s = Stats()
-    stat_values[event_pair][institution] = s
-    earlier, later = event_pair
-    with open(f'./reports/{institution}-{admit_term}-{earlier} to {later}.md', 'w') as report:
-      print(f'# {institution_names[institution]}: {semester}\n\n'
-            f'## Days from {event_names[earlier]} to {event_names[later]}\n'
-            f'| Statistic | Value |\n| :--- | :--- |', file=report)
-      # Build frequency distributions of earlier and later event date pair differences
-      frequencies = defaultdict(int)  # Maybe plot these later
-      deltas = []
-      for student_id in students.keys():
-        if (students[student_id][earlier] is not None
-           and students[student_id][earlier] != missing_date
-           and students[student_id][later] is not None
-           and students[student_id][later] != missing_date):
-          delta = students[student_id][later] - students[student_id][earlier]
 
-          deltas.append(delta.days)
-          frequencies[delta.days] += 1
-      s.n = len(deltas)
-      print(f'| N | {s.n}', file=report)
-      if len(deltas) > 5:
-        s.mean = statistics.fmean(deltas)
-        s.std_dev = statistics.stdev(deltas)
-        s.median = statistics.median_grouped(deltas)
-        s.mode = statistics.mode(deltas)
-        s.min_val = min(deltas)
-        s.max_val = max(deltas)
-        min_max_str = f'{min(deltas)} : {max(deltas)}'
-        quartile_list = statistics.quantiles(deltas, n=4, method='exclusive')
-        s.q_1 = quartile_list[0]
-        s.q_2 = quartile_list[1]
-        s.q_3 = quartile_list[2]
-        quartile_str = f'{s.q_1:.0f} : {s.q_2:.0f} : {s.q_3:.0f}'
-        s.siqr = (s.q_3 - s.q_1) / 2.0
-        print(f'| Medan | {s.median:.0f}', file=report)
-        print(f'| Mean | {s.mean:.0f}', file=report)
-        print(f'| Mode | {s.mode:.0f}', file=report)
-        print(f'| Range | {min_max_str}', file=report)
-        print(f'| Quartiles | {quartile_str}', file=report)
-        print(f'| SIQR | {s.siqr:.1f}', file=report)
-        print(f'| Std Dev | {s.std_dev:.1f}', file=report)
-      else:
-        print('### Not enough data.', file=report)
+    # For each measure, generate a Markdown report, and collect stats for the measures spreadsheets
+    # ---------------------------------------------------------------------------------------------
+    for event_pair in event_pairs:
+      s = stat_values[institution][admit_term.term][event_pair]
+      earlier, later = event_pair
+      with open(f'./reports/{institution}-{admit_term}-{earlier} to {later}.md', 'w') as report:
+        print(f'# {institution_names[institution]}: {admit_term}\n\n'
+              f'## Days from {event_names[earlier]} to {event_names[later]}\n'
+              f'| Statistic | Value |\n| :--- | :--- |', file=report)
+        # Build frequency distributions of earlier and later event date pair differences
+        frequencies = defaultdict(int)  # Maybe plot these later
+        deltas = []
+        for student_id in cohorts[cohort_key].keys():
+          if (cohorts[cohort_key][student_id][earlier] is not None
+             and cohorts[cohort_key][student_id][earlier] != missing_date
+             and cohorts[cohort_key][student_id][later] is not None
+             and cohorts[cohort_key][student_id][later] != missing_date):
+            delta = (cohorts[cohort_key][student_id][later]
+                     - cohorts[cohort_key][student_id][earlier])
 
+            deltas.append(delta.days)
+            frequencies[delta.days] += 1
+
+        s.n = len(deltas)
+        print(f'| N | {s.n}', file=report)
+        if len(deltas) > 5:
+          s.mean = statistics.fmean(deltas)
+          s.std_dev = statistics.stdev(deltas)
+          s.median = statistics.median_grouped(deltas)
+          s.mode = statistics.mode(deltas)
+          s.min_val = min(deltas)
+          s.max_val = max(deltas)
+          min_max_str = f'{min(deltas)} : {max(deltas)}'
+          quartile_list = statistics.quantiles(deltas, n=4, method='exclusive')
+          s.q_1 = quartile_list[0]
+          s.q_2 = quartile_list[1]
+          s.q_3 = quartile_list[2]
+          quartile_str = f'{s.q_1:.0f} : {s.q_2:.0f} : {s.q_3:.0f}'
+          s.siqr = (s.q_3 - s.q_1) / 2.0
+          print(f'| Medan | {s.median:.0f}', file=report)
+          print(f'| Mean | {s.mean:.0f}', file=report)
+          print(f'| Mode | {s.mode:.0f}', file=report)
+          print(f'| Range | {min_max_str}', file=report)
+          print(f'| Quartiles | {quartile_str}', file=report)
+          print(f'| SIQR | {s.siqr:.1f}', file=report)
+          print(f'| Std Dev | {s.std_dev:.1f}', file=report)
+        else:
+          print('### Not enough data.', file=report)
+exit()
 # Generate each spreadsheet from the saved spreadsheets dict
 # ------------------------------------------------------------------------------------------------
 for event_pair in event_pairs:
