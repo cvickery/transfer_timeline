@@ -38,11 +38,12 @@ import statistics
 
 from collections import namedtuple, defaultdict
 from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
 
 from pgconnection import PgConnection
 
 
-class Term:
+class AdmitTerm:
   """ CF term code and semester name
   """
   def __init__(self, term_code, semester_name):
@@ -99,10 +100,10 @@ event_names = {'appl': 'Apply',
                'first_fetch': 'First Eval',
                'latest_fetch': 'Latest Eval',
                'start_reg': 'Start Registration',
-               'first_cls': 'Start Classes',
                'first_enr': 'First Registered',
                'latest_enr': 'Latest Registered',
-               'wadm': 'Admin',
+               'first_cls': 'Start Classes',
+               'admin': 'Admin',
                }
 event_types = [key for key in event_names.keys()]
 
@@ -121,7 +122,7 @@ def events_dict():
   # Session info is same for all students in cohort
   events['start_reg'] = session.first_registration
   events['first_cls'] = session.classes_start
-  events['wadm'] = []   # List of action/reason events with their dates
+  events['admin'] = []   # List of action/reason events with their dates
   return events
 
 
@@ -160,20 +161,12 @@ try:
     month = admit_term % 10
     if month == 2:
       semester = 'Spring'
-    elif month == 6:
-      semester = 'Summer'
     elif month == 9:
       semester = 'Fall'
     else:
-      print(f'{admit_term}: month ({month}) should be 2 for Spring, 6 for Summer, or 9 for Fall.\n'
-            '  Continue anyway? (yN) ',
-            end='', file=sys.stderr)
-      if not input().lower().startswith('y'):
-        exit('Exit')
-      semester = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month - 1]
+      sys.exit(f'{admit_term}: month ({month}) must be 2 for Spring or 9 for Fall.')
     semester = f'{semester} {year}'
-    admit_terms.append(Term(admit_term, semester))
+    admit_terms.append(AdmitTerm(admit_term, semester))
 
 except ValueError as ve:
   sys.exit(f'“{args.admit_term}” is not a valid CUNY term')
@@ -232,47 +225,62 @@ for institution in institutions:
         """)
     for row in cursor.fetchall():
       student_ids.add(int(row.student_id))
-      event_type = row.program_action.lower()
-      if event_type == 'wadm':
-        if row.action_reason == '':
-          event_name = 'WADM'
-        else:
-          event_name = row.action_reason
-        cohorts[cohort_key][int(row.student_id)][event_type].append(f'{row.effective_date} '
-                                                                    f'{event_name}')
-      else:
-        cohorts[cohort_key][int(row.student_id)][event_type] = row.effective_date
+      # For verificaton, record both commit (DEIN) and academic withdrawal (WADM) events as "Admin"
+      if row.program_action in ['WADM', 'DEIN']:
+        event_str = f'{row.program_action}:{row.action_reason}'.strip(':')
+        cohorts[cohort_key][int(row.student_id)]['admin'].append(f'{row.effective_date} '
+                                                                 f'{event_str}')
+      if row.program_action != 'WADM':  # Include commit date here
+        cohorts[cohort_key][int(row.student_id)][row.program_action.lower()] = row.effective_date
+
     print(f'{len(cohorts[cohort_key]):,} students in {cohort_key} cohort.', file=sys.stderr)
     assert len(student_ids) == len(cohorts[cohort_key])
-    student_id_list = ','.join(f'{id}' for id in student_ids)
+    student_id_list = ','.join(f'{id}' for id in student_ids)   # for looking up registrations
 
-    # Transfers-Applied (credits evaluated) dates
+    """ Get both Summer and Fall Transfer Evaluations and Enrollments together
+    """
+    if (admit_term.term % 10) == 6:
+      term_clause = f'in ({admit_term.term}, {admit_term.term + 3})'
+    else:
+      term_clause = f'= {admit_term.term}'
+
+    # Transfer Evaluation dates
     # ---------------------------------------------------------------------------------------------
-    cursor.execute(f"""
-      select student_id, min(posted_date), max(posted_date)
-        from transfers_applied
-       where dst_institution ~* '{institution}'
-         and articulation_term = {admit_term.term}
-         and student_id in ({student_id_list})
-    group by student_id
-      """)
-    for row in cursor.fetchall():
-      student_id = int(row.student_id)
-      cohorts[cohort_key][student_id]['first_fetch'] = row.min
-      cohorts[cohort_key][student_id]['latest_fetch'] = row.max
+    if student_id_list != '':
+      cursor.execute(f"""
+        select student_id, min(posted_date), max(posted_date)
+          from transfers_applied
+         where dst_institution ~* '{institution}'
+           and articulation_term {term_clause}
+           and student_id in ({student_id_list})
+      group by student_id
+        """)
+      for row in cursor.fetchall():
+        student_id = int(row.student_id)
+        if (cohorts[cohort_key][student_id]['first_fetch'] is None
+            or row.min < cohorts[cohort_key][student_id]['first_fetch']):
+          cohorts[cohort_key][student_id]['first_fetch'] = row.min
+        if (cohorts[cohort_key][student_id]['latest_fetch'] is None
+            or row.max > cohorts[cohort_key][student_id]['latest_fetch']):
+          cohorts[cohort_key][student_id]['latest_fetch'] = row.max
 
     # Enrollment dates
     # ---------------------------------------------------------------------------------------------
-    cursor.execute(f"""
-      select student_id, first_date, last_date
-        from registrations
-       where institution ~* '{institution}'
-         and term = {admit_term.term}
-         and student_id in ({student_id_list})
-      """)
-    for row in cursor.fetchall():
-      cohorts[cohort_key][row.student_id]['first_enr'] = row.first_date
-      cohorts[cohort_key][row.student_id]['latest_enr'] = row.last_date
+    if student_id_list != '':
+      cursor.execute(f"""
+        select student_id, first_date, last_date
+          from registrations
+         where institution ~* '{institution}'
+           and term {term_clause}
+           and student_id in ({student_id_list})
+        """)
+      for row in cursor.fetchall():
+        if (cohorts[cohort_key][row.student_id]['first_enr'] is None
+            or row.first_date < cohorts[cohort_key][row.student_id]['first_enr']):
+          cohorts[cohort_key][row.student_id]['first_enr'] = row.first_date
+        if (cohorts[cohort_key][row.student_id]['latest_enr'] is None
+            or row.last_date > cohorts[cohort_key][row.student_id]['latest_enr']):
+          cohorts[cohort_key][row.student_id]['latest_enr'] = row.last_date
 
     # Create a spreadsheet with the cohort's events for debugging/tableauing
     # ---------------------------------------------------------------------------------------------
@@ -281,11 +289,11 @@ for institution in institutions:
             file=spreadsheet)
       for student_id in sorted(student_ids):
         dates = ','.join([f'{cohorts[cohort_key][student_id][event]}' for event in event_types
-                         if event != 'wadm'])
-        if len(cohorts[cohort_key][student_id]['wadm']) == 0:
+                         if event != 'admin'])
+        if len(cohorts[cohort_key][student_id]['admin']) == 0:
           dates += ',None'
         else:
-          dates += ',' + '; '.join(sorted(cohorts[cohort_key][student_id]['wadm']))
+          dates += ',' + '; '.join(sorted(cohorts[cohort_key][student_id]['admin']))
         print(f'{student_id}, {dates}', file=spreadsheet)
 
     # For each measure, generate a Markdown report, and collect stats for the measures spreadsheets
@@ -336,120 +344,188 @@ for institution in institutions:
           print(f'| Std Dev | {s.std_dev:.1f}', file=report)
         else:
           print('### Not enough data.', file=report)
-exit()
-# Generate each spreadsheet from the saved spreadsheets dict
+
+
+# Generate an Excel workbook
 # ------------------------------------------------------------------------------------------------
+""" One sheet for each measure; colleges by columns; rows are statistics for admit term
+"""
+centered = Alignment('center')
+bold = Font(bold=True)
+wb = Workbook()
 for event_pair in event_pairs:
   earlier, later = event_pair
-  with open(f'./stat_sheets/{earlier}-to-{later}-{admit_term}.csv', 'w') as stat_sheet:
-    col_headings = 'Statistic,' + ', '.join([f'{institution}' for institution in institutions])
-    print(f'{col_headings}', file=stat_sheet)
+  ws = wb.create_sheet(f'{earlier}-{later}')
+
+  headings = [''] + institutions
+  row = 1
+  for col in range(len(headings)):
+    ws.cell(row, col + 1, headings[col]).font = bold
+    ws.cell(row, col + 1, headings[col]).alignment = centered
+
+  for admit_term in admit_terms:
+    row += 1
+    ws.cell(row, 2, str(admit_term))
+    ws.merge_cells(start_row=row, end_row=row, start_column=2, end_column=len(headings))
+    ws.cell(row, 2).font = bold
+    ws.cell(row, 2).alignment = centered
 
     # Everbody should have an N value
-    vals = ','.join([f'{stat_values[event_pair][institution].n}' for institution in institutions])
-    print(f'N, {vals}', file=stat_sheet)
+    row += 1
+    ws.cell(row, 1, 'N').font = bold
+    values = [stat_values[institution][admit_term.term][event_pair].n
+              for institution in institutions]
+    for col in range(2, 2 + len(headings) - 1):
+      ws.cell(row, col).value = values[col - 2]
 
     # The remainder is messy because there will be None values where N < 6 for some institution, and
     # because different statistics have different formatting rules
 
-    vals = []
+    # Median
+    row += 1
+    ws.cell(row, 1, 'Median').font = bold
+    values = []
     for institution in institutions:
-      val = stat_values[event_pair][institution].median
-      if val is None:
-        vals.append('')
+      value = stat_values[institution][admit_term.term][event_pair].median
+      if value is None:
+        values.append('')
       else:
-        vals.append(f'{val:.0f}')
-    vals = ','.join(vals)
-    print(f'Median, {vals}', file=stat_sheet)
+        values.append(value)
+    for col in range(2, 2 + len(headings) - 1):
+      ws.cell(row, col).value = values[col - 2]
+      ws.cell(row, col).number_format = '0'
 
-    vals = []
+    # Mean
+    row += 1
+    ws.cell(row, 1, 'Mean').font = bold
+    values = []
     for institution in institutions:
-      val = stat_values[event_pair][institution].mean
-      if val is None:
-        vals.append('')
+      value = stat_values[institution][admit_term.term][event_pair].mean
+      if value is None:
+        values.append('')
       else:
-        vals.append(f'{val:.0f}')
-    vals = ','.join(vals)
-    print(f'Mean, {vals}', file=stat_sheet)
+        values.append(value)
+    for col in range(2, 2 + len(headings) - 1):
+      ws.cell(row, col).value = values[col - 2]
+      ws.cell(row, col).number_format = '0'
 
-    vals = []
+    # Mode
+    row += 1
+    ws.cell(row, 1, 'Mode').font = bold
+    values = []
     for institution in institutions:
-      val = stat_values[event_pair][institution].mode
-      if val is None:
-        vals.append('')
+      value = stat_values[institution][admit_term.term][event_pair].mode
+      if value is None:
+        values.append('')
       else:
-        vals.append(f'{val:.0f}')
-    vals = ','.join(vals)
-    print(f'Mode, {vals}', file=stat_sheet)
+        values.append(value)
+    for col in range(2, 2 + len(headings) - 1):
+      ws.cell(row, col).value = values[col - 2]
+      ws.cell(row, col).number_format = '0'
 
-    vals = []
+     # Min
+    row += 1
+    ws.cell(row, 1, 'Min').font = bold
+    values = []
     for institution in institutions:
-      val = stat_values[event_pair][institution].min_val
-      if val is None:
-        vals.append('')
+      value = stat_values[institution][admit_term.term][event_pair].min_val
+      if value is None:
+        values.append('')
       else:
-        vals.append(f'{val:.0f}')
-    vals = ','.join(vals)
-    print(f'Min, {vals}', file=stat_sheet)
+        values.append(value)
+    for col in range(2, 2 + len(headings) - 1):
+      ws.cell(row, col).value = values[col - 2]
+      ws.cell(row, col).number_format = '0'
 
-    vals = []
+     # Max
+    row += 1
+    ws.cell(row, 1, 'Max').font = bold
+    values = []
     for institution in institutions:
-      val = stat_values[event_pair][institution].max_val
-      if val is None:
-        vals.append('')
+      value = stat_values[institution][admit_term.term][event_pair].max_val
+      if value is None:
+        values.append('')
       else:
-        vals.append(f'{val:.0f}')
-    vals = ','.join(vals)
-    print(f'Max, {vals}', file=stat_sheet)
+        values.append(value)
+    for col in range(2, 2 + len(headings) - 1):
+      ws.cell(row, col).value = values[col - 2]
+      ws.cell(row, col).number_format = '0'
 
-    vals = []
+     # Q1
+    row += 1
+    ws.cell(row, 1, 'Q1').font = bold
+    values = []
     for institution in institutions:
-      val = stat_values[event_pair][institution].q_1
-      if val is None:
-        vals.append('')
+      value = stat_values[institution][admit_term.term][event_pair].q_1
+      if value is None:
+        values.append('')
       else:
-        vals.append(f'{val:.0f}')
-    vals = ','.join(vals)
-    print(f'Q1, {vals}', file=stat_sheet)
+        values.append(value)
+    for col in range(2, 2 + len(headings) - 1):
+      ws.cell(row, col).value = values[col - 2]
+      ws.cell(row, col).number_format = '0.0'
 
-    vals = []
+     # Q2
+    row += 1
+    ws.cell(row, 1, 'Q2').font = bold
+    values = []
     for institution in institutions:
-      val = stat_values[event_pair][institution].q_2
-      if val is None:
-        vals.append('')
+      value = stat_values[institution][admit_term.term][event_pair].q_2
+      if value is None:
+        values.append('')
       else:
-        vals.append(f'{val:.0f}')
-    vals = ','.join(vals)
-    print(f'Q2, {vals}', file=stat_sheet)
+        values.append(value)
+    for col in range(2, 2 + len(headings) - 1):
+      ws.cell(row, col).value = values[col - 2]
+      ws.cell(row, col).number_format = '0.0'
 
-    vals = []
+     # Q3
+    row += 1
+    ws.cell(row, 1, 'Q3').font = bold
+    values = []
     for institution in institutions:
-      val = stat_values[event_pair][institution].q_3
-      if val is None:
-        vals.append('')
+      value = stat_values[institution][admit_term.term][event_pair].q_3
+      if value is None:
+        values.append('')
       else:
-        vals.append(f'{val:.0f}')
-    vals = ','.join(vals)
-    print(f'Q3, {vals}', file=stat_sheet)
+        values.append(value)
+    for col in range(2, 2 + len(headings) - 1):
+      ws.cell(row, col).value = values[col - 2]
+      ws.cell(row, col).number_format = '0.0'
 
-    vals = []
+     # SIQR
+    row += 1
+    ws.cell(row, 1, 'SIQR').font = bold
+    values = []
     for institution in institutions:
-      val = stat_values[event_pair][institution].siqr
-      if val is None:
-        vals.append('')
+      value = stat_values[institution][admit_term.term][event_pair].siqr
+      if value is None:
+        values.append('')
       else:
-        vals.append(f'{val:.1f}')
-    vals = ','.join(vals)
-    print(f'SIQR, {vals}', file=stat_sheet)
+        values.append(value)
+    for col in range(2, 2 + len(headings) - 1):
+      ws.cell(row, col).value = values[col - 2]
+      ws.cell(row, col).number_format = '0.1'
 
-    vals = []
+     # Std Dev
+    row += 1
+    ws.cell(row, 1, 'Std Dev').font = bold
+    values = []
     for institution in institutions:
-      val = stat_values[event_pair][institution].std_dev
-      if val is None:
-        vals.append('')
+      value = stat_values[institution][admit_term.term][event_pair].std_dev
+      if value is None:
+        values.append('')
       else:
-        vals.append(f'{val:.1f}')
-    vals = ','.join(vals)
-    print(f'Std Dev, {vals}', file=stat_sheet)
+        values.append(value)
+    for col in range(2, 2 + len(headings) - 1):
+      ws.cell(row, col).value = values[col - 2]
+      ws.cell(row, col).number_format = '0.1'
+
+    # Empty row between Admit Terms
+    row += 1
+    ws.merge_cells(start_row=row, end_row=row, start_column=1, end_column=len(headings))
+
+del wb['Sheet']
+wb.save('./debug.xlsx')
 
 exit()
