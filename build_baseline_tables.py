@@ -179,6 +179,9 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
     else:
       row = Row._make(line)
       admit_term = int(row.admit_term)
+      # Fall admits are allowed to matriculate in the summer
+      if (admit_term % 10) == 6:
+        admit_term += 3
       try:
         requirement_term = int(row.requirement_term)
       except ValueError as ve:
@@ -292,7 +295,7 @@ with open(registrations_table_file, encoding='ascii', errors='backslashreplace')
       print(f'{m:6,} / {n:,}\r', end='', file=sys.stderr)
       row = Row._make(line)
       term = int(row.term)
-      if row.career != 'UGRD' or term < 1199 or row.session != '1':
+      if row.career != 'UGRD':
         continue
       registration_key = Registration_Key._make([row.id, row.institution[0:3], term])
       try:
