@@ -61,6 +61,15 @@ class AdmitTerm:
 """
 
 
+class Stats:
+  """ mean, median, mode, etc.
+  """
+  def __init__(self):
+    self.n = self.mean = self.std_dev = self.median = self.mode = self.min_val = self.max_val =\
+        self.q_1 = self.q_2 = self.q_3 = self.siqr = None
+
+
+# Factory methods for initializing defaultdicts
 def institution_factory():
   return defaultdict(term_factory)
 
@@ -71,14 +80,6 @@ def term_factory():
 
 def stat_factory():
   return Stats()
-
-
-class Stats:
-  """ mean, median, mode, etc.
-  """
-  def __init__(self):
-    self.n = self.mean = self.std_dev = self.median = self.mode = self.min_val = self.max_val =\
-        self.q_1 = self.q_2 = self.q_3 = self.siqr = None
 
 
 stat_values = defaultdict(institution_factory)
@@ -217,10 +218,19 @@ for institution in institutions:
 
     # Add the students and their admission events to the cohort
     # ---------------------------------------------------------------------------------------------
+    """ Merge Summer and Fall admit terms together here, and for evaluations and registrations.
+        Students can only apply for Spring and Fall, but during the matriculation process, the Fall
+        admit term gets changed to Summer so they can register then ... if they want to.
+    """
+    if (admit_term.term % 10) == 6:
+      term_clause = f'in ({admit_term.term}, {admit_term.term + 3})'
+    else:
+      term_clause = f'= {admit_term.term}'
+
     cursor.execute(f"""
         select student_id, program_action, action_reason, effective_date from admissions
          where institution = '{institution}'
-           and admit_term = {admit_term.term}
+           and admit_term {term_clause}
            and program_action in ('APPL', 'ADMT', 'DEIN', 'MATR', 'WADM')
         """)
     for row in cursor.fetchall():
@@ -236,13 +246,6 @@ for institution in institutions:
     print(f'{len(cohorts[cohort_key]):,} students in {cohort_key} cohort.', file=sys.stderr)
     assert len(student_ids) == len(cohorts[cohort_key])
     student_id_list = ','.join(f'{id}' for id in student_ids)   # for looking up registrations
-
-    """ Get both Summer and Fall Transfer Evaluations and Enrollments together
-    """
-    if (admit_term.term % 10) == 6:
-      term_clause = f'in ({admit_term.term}, {admit_term.term + 3})'
-    else:
-      term_clause = f'= {admit_term.term}'
 
     # Transfer Evaluation dates
     # ---------------------------------------------------------------------------------------------
