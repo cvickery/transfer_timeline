@@ -47,7 +47,7 @@ class AdmitTerm:
   """ CF term code and semester name
   """
   def __init__(self, term_code, semester_name):
-    self.term = term_code
+    self.term = int(term_code)
     self.name = semester_name
 
   def __repr__(self):
@@ -98,8 +98,8 @@ event_names = {'appl': 'Apply',
                'admt': 'Admit',
                'dein': 'Commit',
                'matr': 'Matric',
-               'first_fetch': 'First Eval',
-               'latest_fetch': 'Latest Eval',
+               'first_eval': 'First Eval',
+               'latest_eval': 'Latest Eval',
                'start_reg': 'Start Registration',
                'first_enr': 'First Registered',
                'latest_enr': 'Latest Registered',
@@ -222,8 +222,9 @@ for institution in institutions:
         Students can only apply for Spring and Fall, but during the matriculation process, the Fall
         admit term gets changed to Summer so they can register then ... if they want to.
     """
-    if (admit_term.term % 10) == 6:
-      term_clause = f'in ({admit_term.term}, {admit_term.term + 3})'
+    if (admit_term.term % 10) != 2:
+      base_term = int(10 * (int(admit_term.term / 10)))
+      term_clause = f'in ({base_term + 6}, {base_term + 9})'
     else:
       term_clause = f'= {admit_term.term}'
 
@@ -251,21 +252,22 @@ for institution in institutions:
     # ---------------------------------------------------------------------------------------------
     if student_id_list != '':
       cursor.execute(f"""
-        select student_id, min(posted_date), max(posted_date)
+        select student_id, posted_date
           from transfers_applied
          where dst_institution ~* '{institution}'
            and articulation_term {term_clause}
            and student_id in ({student_id_list})
-      group by student_id
+      group by student_id, posted_date
         """)
       for row in cursor.fetchall():
         student_id = int(row.student_id)
-        if (cohorts[cohort_key][student_id]['first_fetch'] is None
-            or row.min < cohorts[cohort_key][student_id]['first_fetch']):
-          cohorts[cohort_key][student_id]['first_fetch'] = row.min
-        if (cohorts[cohort_key][student_id]['latest_fetch'] is None
-            or row.max > cohorts[cohort_key][student_id]['latest_fetch']):
-          cohorts[cohort_key][student_id]['latest_fetch'] = row.max
+        if (posted_date := row.posted_date) > datetime.date(1901, 1, 1):
+          if (cohorts[cohort_key][student_id]['first_eval'] is None
+              or posted_date < cohorts[cohort_key][student_id]['first_eval']):
+            cohorts[cohort_key][student_id]['first_eval'] = posted_date
+          if (cohorts[cohort_key][student_id]['latest_eval'] is None
+              or posted_date > cohorts[cohort_key][student_id]['latest_eval']):
+            cohorts[cohort_key][student_id]['latest_eval'] = posted_date
 
     # Enrollment dates
     # ---------------------------------------------------------------------------------------------
@@ -397,6 +399,7 @@ for event_pair in event_pairs:
     for col in range(2, 2 + len(headings) - 1):
       ws.cell(row, col).value = values[col - 2]
       ws.cell(row, col).number_format = '0'
+      ws.cell(row, col).font = bold
 
     # Mean
     row += 1
