@@ -29,6 +29,8 @@
     Not looked at, but potentially useful info:
       Students who belong to more than one transfer cohort for a semester. Does transfer fetch
       timing make them go to another college?
+
+    Interesting to see how the above has evolved as the code below was developed.
 """
 
 import sys
@@ -93,11 +95,17 @@ institution_names = {'BAR': 'Baruch', 'BCC': 'Bronx', 'BKL': 'Brooklyn', 'BMC': 
                      'QCC': 'Queensborough', 'QNS': 'Queens', 'SLU': 'Labor/Urban',
                      'SOJ': 'Journalism', 'SPH': 'Public Health', 'SPS': 'SPS', 'YRK': 'York'}
 
+# Make the 4-letter admissions “program_action” names a little less terse/cryptic
+action_to_event = {'appl': 'apply',
+                   'admt': 'admit',
+                   'dein': 'commit',
+                   'matr': 'matric',
+                   'wadm': 'admin'}
 
-event_names = {'appl': 'Apply',
-               'admt': 'Admit',
-               'dein': 'Commit',
-               'matr': 'Matric',
+event_names = {'apply': 'Apply',
+               'admit': 'Admit',
+               'commit': 'Commit',
+               'matric': 'Matric',
                'first_eval': 'First Eval',
                'latest_eval': 'Latest Eval',
                'start_reg': 'Start Registration',
@@ -106,7 +114,10 @@ event_names = {'appl': 'Apply',
                'first_cls': 'Start Classes',
                'admin': 'Admin',
                }
-event_types = [key for key in event_names.keys()]
+
+# Admin "events" are included in the timelines spreadsheets for data verification; they can't be
+# used for measurements
+event_types = [key for key in event_names.keys() if key != 'admin']
 
 EventPair = namedtuple('EventPair', 'earlier later')
 
@@ -123,7 +134,7 @@ def events_dict():
   # Session info is same for all students in cohort
   events['start_reg'] = session.first_registration
   events['first_cls'] = session.classes_start
-  events['admin'] = []   # List of action/reason events with their dates
+  events['admin'] = []   # List of dein/wadm events with their dates
   return events
 
 
@@ -179,6 +190,7 @@ for institution in institutions:
 
 conn = PgConnection('cuny_transfers')
 cursor = conn.cursor()
+cohort_report = open('./cohort_report.txt', 'w')
 
 # Initialize Data Structures
 # =================================================================================================
@@ -236,15 +248,21 @@ for institution in institutions:
         """)
     for row in cursor.fetchall():
       student_ids.add(int(row.student_id))
-      # For verificaton, record both commit (DEIN) and academic withdrawal (WADM) events as "Admin"
-      if row.program_action in ['WADM', 'DEIN']:
+      # For verificaton, show both commit (DEIN) and academic withdrawal (WADM) events as "Admin"
+      program_action = row.program_action.lower()
+      effective_date = row.effective_date
+      if program_action in ['wadm', 'dein']:
         event_str = f'{row.program_action}:{row.action_reason}'.strip(':')
-        cohorts[cohort_key][int(row.student_id)]['admin'].append(f'{row.effective_date} '
+        cohorts[cohort_key][int(row.student_id)]['admin'].append(f'{effective_date} '
                                                                  f'{event_str}')
-      if row.program_action != 'WADM':  # Include commit date here
-        cohorts[cohort_key][int(row.student_id)][row.program_action.lower()] = row.effective_date
+        # Convert DEIN to 'commit'
+        cohorts[cohort_key][int(row.student_id)]['commit'] = row.effective_date
+      else:
+        event_type = action_to_event[program_action]
+        cohorts[cohort_key][int(row.student_id)][event_type] = effective_date
 
-    print(f'{len(cohorts[cohort_key]):,} students in {cohort_key} cohort.', file=sys.stderr)
+    print(f'{len(cohorts[cohort_key]):,} students in {cohort_key} cohort', file=sys.stderr)
+    print(f'{len(cohorts[cohort_key]):,} students in {cohort_key} cohort', file=cohort_report)
     assert len(student_ids) == len(cohorts[cohort_key])
     student_id_list = ','.join(f'{id}' for id in student_ids)   # for looking up registrations
 

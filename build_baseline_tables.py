@@ -23,7 +23,7 @@ trans_conn = PgConnection('cuny_transfers')
 trans_cursor = trans_conn.cursor()
 
 # Sessions
-session_table_files = Path('./downloads').glob('*SESSION*')
+session_table_files = Path('./Admissions_Registrations').glob('*SESSION*')
 session_table_file = None
 for file in session_table_files:
   if session_table_file is None or file.stat().st_mtime > session_table_file.stat().st_mtime:
@@ -65,7 +65,7 @@ with open(session_table_file) as stf:
       Row = namedtuple('Row', [col.lower().replace(' ', '_') for col in line])
     else:
       row = Row._make(line)
-      if row.career != 'UGRD' or row.term < '1199' or row.term > '1219':
+      if row.career != 'UGRD':
         continue
 
       try:
@@ -80,6 +80,7 @@ with open(session_table_file) as stf:
         m, d, y = row.session_end_date.split('/')
         session_end_date = datetime.date(int(y), int(m), int(d))
       except ValueError as ve:
+        # Report, but ignore, sessions with missing/invalid dates
         print(f'Session Date situation: {row}\n', file=logfile)
         continue
       session_key = Session_Key._make([row.institution[0:3], int(row.term), row.session])
@@ -186,7 +187,7 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
         requirement_term = int(row.requirement_term)
       except ValueError as ve:
         requirement_term = 0
-      if row.career != 'UGRD' or admit_term < 1182:
+      if row.career != 'UGRD':
         continue
       try:
         admittee_key = Admittee_Key._make([int(row.id), int(row.appl_nbr), row.institution[0:3],
