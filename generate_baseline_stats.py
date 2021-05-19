@@ -245,6 +245,7 @@ for institution in institutions:
          where institution = '{institution}'
            and admit_term {term_clause}
            and program_action in ('APPL', 'ADMT', 'DEIN', 'MATR', 'WADM')
+           order by effective_date
         """)
     for row in cursor.fetchall():
       student_ids.add(int(row.student_id))
@@ -255,8 +256,11 @@ for institution in institutions:
         event_str = f'{row.program_action}:{row.action_reason}'.strip(':')
         cohorts[cohort_key][int(row.student_id)]['admin'].append(f'{effective_date} '
                                                                  f'{event_str}')
-        # Convert DEIN to 'commit'
+        # Any DEIN implies Commit
         cohorts[cohort_key][int(row.student_id)]['commit'] = row.effective_date
+        # DEIN:ENDC and DEIN:DEPO imply Matric
+        if event_str in ['DEIN:ENDC', 'DEIN:DEPO']:
+          cohorts[cohort_key][int(row.student_id)]['matric'] = row.effective_date
       else:
         event_type = action_to_event[program_action]
         cohorts[cohort_key][int(row.student_id)][event_type] = effective_date
@@ -378,7 +382,7 @@ bold = Font(bold=True)
 wb = Workbook()
 for event_pair in event_pairs:
   earlier, later = event_pair
-  ws = wb.create_sheet(f'{earlier}-{later}')
+  ws = wb.create_sheet(f'{event_names[earlier][0:14]} to {event_names[later][0:14]}')
 
   headings = [''] + institutions
   row = 1
