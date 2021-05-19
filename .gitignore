@@ -4,6 +4,7 @@
 /reports/
 *.txt
 *.csv
+*.xlsx
 /debugs/
 /Logs/
 /debug
