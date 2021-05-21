@@ -65,7 +65,7 @@ with open(session_table_file) as stf:
       Row = namedtuple('Row', [col.lower().replace(' ', '_') for col in line])
     else:
       row = Row._make(line)
-      if row.career != 'UGRD':
+      if row.career != 'UGRD' and row.career != 'UKCC':
         continue
 
       try:
@@ -115,7 +115,6 @@ insert into sessions values (%s, %s, %s, %s, %s, %s, %s, %s)
       sessions[key].last_registration_date, sessions[key].session_start_date,
       sessions[key].session_end_date))
 trans_conn.commit()
-
 
 # Admissions Table
 # -------------------------------------------------------------------------------------------------
