@@ -65,7 +65,7 @@ with open(session_table_file) as stf:
       Row = namedtuple('Row', [col.lower().replace(' ', '_') for col in line])
     else:
       row = Row._make(line)
-      if row.career != 'UGRD' and row.career != 'UKCC':
+      if row.career not in ['UGRD', 'UKCC', 'ULAG']:
         continue
 
       try:
