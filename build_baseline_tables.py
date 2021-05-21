@@ -186,7 +186,7 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
         requirement_term = int(row.requirement_term)
       except ValueError as ve:
         requirement_term = 0
-      if row.career != 'UGRD':
+      if row.career not in ['UGRD', 'UKCC', 'ULAG']:
         continue
       try:
         admittee_key = Admittee_Key._make([int(row.id), int(row.appl_nbr), row.institution[0:3],
