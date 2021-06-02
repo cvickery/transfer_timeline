@@ -157,7 +157,8 @@ with open('./Admissions_Registrations/prog_reason_table.csv') as infile:
 """
 admittees = defaultdict(dict)
 Admittee_Key = namedtuple('Admittee_key',
-                          'student_id application_number institution admit_term, requirement_term')
+                          'student_id application_number last_school_attended institution '
+                          'admit_term requirement_term')
 Admission_Event = namedtuple('Admission_Event',
                              'admit_type program_action action_reason action_date effective_date')
 """
@@ -189,7 +190,8 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
       if row.career not in ['UGRD', 'UKCC', 'ULAG']:
         continue
       try:
-        admittee_key = Admittee_Key._make([int(row.id), int(row.appl_nbr), row.institution[0:3],
+        admittee_key = Admittee_Key._make([int(row.id), int(row.appl_nbr), row.last_school_attended,
+                                          row.institution[0:3],
                                           admit_term, requirement_term])
       except ValueError as ve:
         print(f'Admittee Key situation: {row}\n', file=logfile)
@@ -218,6 +220,7 @@ drop table if exists admissions;
 create table admissions (
 student_id int,
 application_number int,
+last_school_attended text,
 institution text,
 admit_term int,
 requirement_term int,
@@ -237,9 +240,10 @@ primary key (student_id,
 for key in admittees.keys():
   for program_action in admittees[key].keys():
     trans_cursor.execute(f"""
-insert into admissions values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+insert into admissions values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 on conflict do nothing;
-""", (key.student_id, key.application_number, key.institution, key.admit_term, key.requirement_term,
+""", (key.student_id, key.application_number, key.last_school_attended, key.institution,
+      key.admit_term, key.requirement_term,
       admittees[key][program_action].admit_type,
       program_action,
       admittees[key][program_action].action_reason,
