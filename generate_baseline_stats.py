@@ -282,8 +282,8 @@ for institution in institutions:
         event_type = action_to_event[program_action]
         cohorts[cohort_key][int(row.student_id)][event_type] = effective_date
 
-    print(f'{len(cohorts[cohort_key]):,} students in {cohort_key} cohort', file=sys.stderr)
-    print(f'{len(cohorts[cohort_key]):,} students in {cohort_key} cohort', file=cohort_report)
+    print(f'{len(cohorts[cohort_key]):7,} students in {cohort_key} cohort', file=sys.stderr)
+    print(f'{len(cohorts[cohort_key]):7,} students in {cohort_key} cohort', file=cohort_report)
     assert len(student_ids) == len(cohorts[cohort_key])
     student_id_list = ','.join(f'{id}' for id in student_ids)   # for looking up registrations
 
