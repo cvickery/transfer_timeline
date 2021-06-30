@@ -212,7 +212,7 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
                                    row.action_reason,
                                    action_date,
                                    effective_date])
-print(f'{len(admittees.keys()):,} Admittees\nBuild admissions table', file=sys.stderr)
+print(f'{len(admittees.keys()):,} Transfer Admittees\nBuild admissions table', file=sys.stderr)
 
 trans_cursor.execute("""
 drop table if exists admissions;

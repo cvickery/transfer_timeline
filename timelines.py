@@ -57,8 +57,8 @@ for institution in requested_institutions:
   select admit_term, institution, student_id  from admissions
    where admit_term = {admit_term}
      and institution = '{institution}'
-     and event_type = 'ADMT'
-  group by admit_term, institution, student_id
+     and program_action = 'ADMT'
+  group by admit_term, program_action, institution, student_id
   """)
   cohort = [(CohortKey._make([row.admit_term, row.institution, row.student_id]))
             for row in cursor.fetchall()]
@@ -79,15 +79,15 @@ for institution in requested_institutions:
   AdmissionEvent = namedtuple('AdmissionEvent', 'action_date effective_date')
   for cohort_key in cohort:
     cursor.execute(f"""
-    select event_type, action_date, effective_date
+    select program_action, action_date, effective_date
       from admissions
      where institution = '{institution}'
        and admit_term = {admit_term}
        and student_id = {cohort_key.student_id}
   """)
     for row in cursor.fetchall():
-      student_events[cohort_key][row.event_type] = AdmissionEvent._make([row.action_date,
-                                                                         row.effective_date])
+      student_events[cohort_key][row.program_action] = AdmissionEvent._make([row.action_date,
+                                                                             row.effective_date])
 
   # Transfer Evaluations and Registrations
   print('Lookup Evaluations and Registrations', file=sys.stderr)
