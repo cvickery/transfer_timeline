@@ -1,5 +1,22 @@
 #! /usr/local/bin/python3
-""" Event Dates:
+""" Generate reports with times between various events for various cohorts.
+
+    A cohort consists of all students who apply to transfer to a college for a given term.
+
+    reports/
+      - Markdown report for each measure for each cohort
+      - Spreadsheet for each measure for each report with multiple evaluations/registrations
+        coalesced into single rows
+
+    timelines/
+      - Spreadsheet for each cohort showing all measures available per student
+
+    ./
+      - Baseline_Intervals_yyyy-mm-dd.xlsx Consolidated spreadsheet of statistics for each measure
+        for each cohort.
+      - cohort_report.txt Sizes of cohorts
+
+    Event Dates:
       Session: Early Registration, Open Registration, Classes Start
       Admissions: Apply, Admit, Matric
       Registrations: First, Latest

@@ -105,17 +105,19 @@ for institution in requested_institutions:
   """)
     evaluation_list = [EvaluationEvent._make([row.src_institution, row.posted_date])
                        for row in cursor.fetchall()]
-    cursor.execute(f"""
-      select src_institution, posted_date
-        from transfers_changed
-       where student_id = {cohort_key.student_id}
-         and dst_institution ~* '{institution}'
-         and articulation_term = {admit_term}
-    group by src_institution, posted_date,
-            student_id, dst_institution
-    """)
-    evaluation_list += [EvaluationEvent._make([row.src_institution, row.posted_date])
-                        for row in cursor.fetchall()]
+
+    # cursor.execute(f"""
+    #   select src_institution, posted_date
+    #     from transfers_changed
+    #    where student_id = {cohort_key.student_id}
+    #      and dst_institution ~* '{institution}'
+    #      and articulation_term = {admit_term}
+    # group by src_institution, posted_date,
+    #         student_id, dst_institution
+    # """)
+    # evaluation_list += [EvaluationEvent._make([row.src_institution, row.posted_date])
+    #                     for row in cursor.fetchall()]
+
     student_events[cohort_key]['evaluations'] = evaluation_list
 
     # Registrations
