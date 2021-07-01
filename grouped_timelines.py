@@ -1,5 +1,8 @@
 #! /usr/local/bin/python3
-
+""" This module generates timeline spreadsheets having repeated events for a student coalesced into
+    single cells instead of on separate rows. Not used for generating baseline statistics, but
+    provides a more human-friendly format for checking the data.
+"""
 import sys
 import argparse
 
@@ -22,6 +25,7 @@ institutions = {'BAR': 'Baruch', 'BCC': 'Bronx', 'BKL': 'Brooklyn', 'BMC': 'BMCC
 parser = argparse.ArgumentParser('Timelines by Cohort')
 parser.add_argument('-a', '--admit_term', default=None)
 parser.add_argument('-i', '--institutions', nargs='*')
+parser.add_argument('-v', '--verbose', action='store_true')
 args = parser.parse_args()
 if args.admit_term is None or len(args.institutions) == 0:
   sys.exit(f'Missing cohort information: -a admit_term -i institutions')
@@ -75,7 +79,8 @@ for institution in requested_institutions:
   # to debug single query.
 
   # Admission Events
-  print('Lookup Admission Events', file=sys.stderr)
+  if args.verbose:
+    print('Lookup Admission Events', file=sys.stderr)
   AdmissionEvent = namedtuple('AdmissionEvent', 'action_date effective_date')
   for cohort_key in cohort:
     cursor.execute(f"""
@@ -90,7 +95,8 @@ for institution in requested_institutions:
                                                                              row.effective_date])
 
   # Transfer Evaluations and Registrations
-  print('Lookup Evaluations and Registrations', file=sys.stderr)
+  if args.verbose:
+    print('Lookup Evaluations and Registrations', file=sys.stderr)
   EvaluationEvent = namedtuple('EvaluationEvent', 'src_institution posted_date')
   RegistrationDates = namedtuple('RegistrationDates', 'first_date last_date')
   for cohort_key in cohort:
@@ -105,18 +111,6 @@ for institution in requested_institutions:
   """)
     evaluation_list = [EvaluationEvent._make([row.src_institution, row.posted_date])
                        for row in cursor.fetchall()]
-
-    # cursor.execute(f"""
-    #   select src_institution, posted_date
-    #     from transfers_changed
-    #    where student_id = {cohort_key.student_id}
-    #      and dst_institution ~* '{institution}'
-    #      and articulation_term = {admit_term}
-    # group by src_institution, posted_date,
-    #         student_id, dst_institution
-    # """)
-    # evaluation_list += [EvaluationEvent._make([row.src_institution, row.posted_date])
-    #                     for row in cursor.fetchall()]
 
     student_events[cohort_key]['evaluations'] = evaluation_list
 
@@ -134,8 +128,9 @@ for institution in requested_institutions:
     student_events[cohort_key]['registrations'] = registration_events
 
   # Generate CSV
-  print('Generate CSV Report', file=sys.stderr)
-  with open(f'./reports/{institution}_{semester.replace(", ", "_")}.csv', 'w') as report:
+  if args.verbose:
+    print('Generate CSV', file=sys.stderr)
+  with open(f'./grouped_timelines/{institution}_{semester.replace(", ", "_")}.csv', 'w') as report:
     print('Student, Term, From_College(s), To_College, Apply, Admit, Matric, Eval_Dates, '
           'Admit_Term_Registrations, Other_Term_Registrations',
           file=report)
