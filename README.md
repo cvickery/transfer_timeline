@@ -1,7 +1,9 @@
 # Use CUNYfirst data to track how courses transfer across CUNY.
 
-This project extracts information about how and when courses transfer between CUNY colleges.
-There are two parts: building a local database, and generating reports based on that database.
+This project extracts information about the sequence of events involved when a student transfers
+from one CUNY college to another, with particular attention to transfer credit evaluation.
+
+There are two parts: building a local database, then generating reports based on that database.
 
 ## Build Local Database
 
@@ -31,3 +33,48 @@ Registration (by a student), and Classes Start. A cohort consists of all student
 transfer to a given college in a particular term. For a given pair of the 45 possible event date
 pairs, generate a frequency distribution of complete pairs (i.e. where both events exist for a
 student), and produce descriptive statistics for the intervals between those events.
+
+## Procedures
+
+### Initial setup
+
+The CUNYfirst query CV\_QNS\_TRNS\_DTL\_SRC\_CLASS\_FULL provides information about transfer
+evaluation events from Summer 2019 to date. _populate\_transfers\_applied.py_ uses that query to
+create and populate the transfers\_applied table in the cuny\_transfers database. Running the query,
+downloading the result to this project’s _downloads_ directory, and running
+_populate\_transfers\_applied.py_ are all done manually.
+
+### Automatic Updates
+
+When a student’s credits are re-evaluated, CUNYfirst overwrites the previous evaluation and does not
+keep a record of the changes. We want that history information, so the query
+CV\_QNS\_TRNS\_DTL\_SRC\_CLASS\_ALL is scheduled to run daily on CUNYfirst. A daily _cron_ job on
+babbage.cs.qc.cuny.edu gets that query result from Tumbleweed and moves it into the _downloads_
+directory of this project. Another daily _cron_ job then runs _update\_transfers\_applied.py_ to add
+new (re-)evaluations to the _transfers\_applied_ table.
+
+### Managing Other Tables
+
+Queries for Admissions (_CV\_QNS\_ADMISSIONS_), Registrations(_CV\_QNS\_STUDENT\_SUMMARY_), and
+Sessions (_QNS\_CV\_SESSION\_TABLE_) provide the dates for the events other than credit evaluations.
+These queries, along with some secondary tables giving details about fields in the Admissions
+table, are run manually on CUNYfirst, and saved in the _Admissions\_Registrations_ directory. The
+_build\_baseline\_tables.py_ module uses those queries to create and populate the remaining tables
+in the database.
+
+### Grouped Timelines
+
+The script _grouped\_timelines.py_ generates CSV files for student cohorts (College, Term) in a
+format intended to facilitate spot-checking the event data available in the database. It is run
+manually.
+
+### Report Generation
+
+The script _generate\_baseline\_stats.sh_ checks that the baseline table queries are up to date,
+and then uses _generate_baseline\_stats.py_ to generate statistical reports on the number of days
+between pairs of events. A master Excel spreadsheet is saved in the project directory, Markdown
+reports for each cohort and measure are saved in the _reports_ directory, and detailed timeline CSV
+files are saved in the _timelines_ directory.
+
+The _generate\_baseline\_stats.sh_ can be edited to select the cohorts and date-pairs to be
+reported.
