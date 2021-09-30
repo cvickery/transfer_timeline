@@ -71,7 +71,7 @@ manually.
 ### Report Generation
 
 The script _generate\_baseline\_stats.sh_ checks that the baseline table queries are up to date,
-and then uses _generate_baseline\_stats.py_ to generate statistical reports on the number of days
+and then uses _generate\_baseline\_stats.py_ to generate statistical reports on the number of days
 between pairs of events. A master Excel spreadsheet is saved in the project directory, Markdown
 reports for each cohort and measure are saved in the _reports_ directory, and detailed timeline CSV
 files are saved in the _timelines_ directory.
