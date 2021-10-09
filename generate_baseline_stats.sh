@@ -6,7 +6,7 @@
 institutions='bcc bmc hos kcc lag qcc bar bkl csi cty htr jjc leh mec nyt qns sps yrk'
 
 # Admit terms list should be updated manually as new terms "of interest" become relevant.
-terms='1199 1202 1209 1212 1219'
+terms='1199 1202 1209 1212 1219 1222'
 
 # There are 45 possible event pairs; these seem potentially interesting. Edit to select others.
 # The order within the pairs should be adjusted so that positive/negative interval values have a
