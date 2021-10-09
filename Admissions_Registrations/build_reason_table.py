@@ -5,7 +5,17 @@
 import csv
 import sys
 from collections import namedtuple
+from pathlib import Path
+
 from pgconnection import PgConnection
+
+project_dir = Path('/Users/vickery/Projects/transfers_applied/')
+query_dir = Path(project_dir, 'Admissions_Registrations')
+latest = None
+for file in Path(query_dir).glob(f'PROG_REASON*'):
+  if latest is None or file.stat().st_mtime > latest.stat().st_mtime:
+    latest = file
+print(f'Using {latest}')
 
 conn = PgConnection('cuny_transfers')
 cursor = conn.cursor()
@@ -19,7 +29,7 @@ cursor.execute("""
     primary key (institution, program_action, action_reason)
     );
     """)
-with open('./prog_reason_table.csv') as infile:
+with open(latest, newline='', errors='replace') as infile:
   reader = csv.reader(infile)
   for line in reader:
     if reader.line_num == 1:
