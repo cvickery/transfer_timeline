@@ -7,7 +7,7 @@ colleges='BAR BCC BKL BMC CSI CTY HOS HTR JJC KCC LAG LEH MEC NCC NYT QCC QNS SP
 
 # The admit term list has to be updated manually.
 start=$SECONDS
-for admit_term in 1192 1199 1202 1209 1212 1219
+for admit_term in 1192 1199 1202 1209 1212 1219 1222
 do echo $admit_term
    ./grouped_timelines.py -i $colleges -a $admit_term > grouped_timelines.log
 done
