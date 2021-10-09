@@ -15,7 +15,7 @@ from pgconnection import PgConnection
 
 # Report the ages of the queries used to build baseline tables
 queries = ['CV_QNS_ADMISSIONS', 'CV_QNS_STUDENT_SUMMARY', 'QNS_CV_SESSION_TABLE',
-           'admit_action_table', 'admit_type_table', 'prog_reason_table']
+           'ADMIT_ACTION_TBL', 'ADMIT_TYPE_TBL', 'PROG_REASON_TBL']
 project_dir = Path('/Users/vickery/Projects/transfers_applied/')
 query_dir = Path(project_dir, 'Admissions_Registrations')
 today = datetime.today().timestamp()
