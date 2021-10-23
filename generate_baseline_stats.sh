@@ -11,8 +11,8 @@ terms='1199 1202 1209 1212 1219 1222'
 # There are 45 possible event pairs; these seem potentially interesting. Edit to select others.
 # The order within the pairs should be adjusted so that positive/negative interval values have a
 # consistent meaning of "goodness".
-event_pairs='apply:admit admit:commit commit:matric admit:matric admit:first_eval
- admit:latest_eval commit:first_eval commit:latest_eval matric:first_eval matric:latest_eval
+event_pairs='apply:admit admit:commit commit:matric admit:matric admit:first_eval admit:latest_eval
+ admit:start_reg commit:first_eval commit:latest_eval matric:first_eval matric:latest_eval
  first_eval:start_reg latest_eval:start_reg'
 
 # Be sure all the query data, except for evaluations, is up to date.

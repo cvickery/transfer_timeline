@@ -4,13 +4,24 @@
 """
 
 import csv
+import datetime
+import resource
 import sys
+import time
 
 from collections import namedtuple, defaultdict
-import datetime
 from pathlib import Path
 
 from pgconnection import PgConnection
+
+soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+resource.setrlimit(resource.RLIMIT_NOFILE, [0x800, hard])
+
+
+def min_sec(arg: float) -> str:
+  mins, secs = divmod(arg, 60)
+  return f'{int(mins)}:{int(secs):02}'
+
 
 # Development connection
 logfile = open('./build_baseline_tables.log', 'w')
@@ -54,8 +65,9 @@ def session_factory(args):
   return Session._make(args)
 
 
-Session = namedtuple('Session', 'first_registration_date open_registration_date '
-                     'last_registration_date ''session_start_date session_end_date')
+Session = namedtuple('Session', 'first_registration_date last_waitlist_date open_registration_date '
+                     'last_registration_date session_start_date census_date sixty_percent_date '
+                     'session_end_date')
 Session_Key = namedtuple('Session_Key', 'institution term session')
 sessions = defaultdict(session_factory)
 with open(session_table_file) as stf:
@@ -65,27 +77,29 @@ with open(session_table_file) as stf:
       Row = namedtuple('Row', [col.lower().replace(' ', '_') for col in line])
     else:
       row = Row._make(line)
-      if row.career not in ['UGRD', 'UKCC', 'ULAG']:
+      if row.career not in ['UGRD', 'UKCC', 'ULAG'] or row.institution[0:3] == 'UAP':
         continue
+      first_enrollment_date = last_waitlist_date = open_enrollment_date = last_enrollment_date = \
+          session_start_date = census_date = sixty_percent_date = session_end_date = None
+      for key, value in {row.first_date_to_enroll: 'first_enrollment_date',
+                         row.last_date_for_wait_list: 'last_waitlist_date',
+                         row.open_enrollment_date: 'open_enrollment_date',
+                         row.last_date_to_enroll: 'last_enrollment_date',
+                         row.session_beginning_date: 'session_start_date',
+                         row.census_date: 'census_date',
+                         row.sixty_percent_point_in_time: 'sixty_percent_date',
+                         row.session_end_date: 'session_end_date',
+                         }.items():
 
-      try:
-        m, d, y = row.first_date_to_enroll.split('/')
-        first_enrollment_date = datetime.date(int(y), int(m), int(d))
-        m, d, y = row.last_date_to_enroll.split('/')
-        last_enrollment_date = datetime.date(int(y), int(m), int(d))
-        m, d, y = row.open_enrollment_date.split('/')
-        open_enrollment_date = datetime.date(int(y), int(m), int(d))
-        m, d, y = row.session_beginning_date.split('/')
-        session_start_date = datetime.date(int(y), int(m), int(d))
-        m, d, y = row.session_end_date.split('/')
-        session_end_date = datetime.date(int(y), int(m), int(d))
-      except ValueError as ve:
-        # Report, but ignore, sessions with missing/invalid dates
-        print(f'Session Date situation: {row}\n', file=logfile)
-        continue
+        try:
+          m, d, y = key.split('/')
+          globals()[value] = datetime.date(int(y), int(m), int(d))
+        except ValueError as ve:
+          pass
       session_key = Session_Key._make([row.institution[0:3], int(row.term), row.session])
-      sessions[session_key] = Session._make([first_enrollment_date, open_enrollment_date,
-                                            last_enrollment_date, session_start_date,
+      sessions[session_key] = Session._make([first_enrollment_date, last_waitlist_date,
+                                            open_enrollment_date, last_enrollment_date,
+                                            session_start_date, census_date, sixty_percent_date,
                                             session_end_date])
 
 # for session_key in sorted(sessions.keys()):
@@ -99,9 +113,12 @@ create table sessions (
   term int,
   session text,
   first_registration date,
+  last_waitlist date,
   open_registration date,
   last_registration date,
   session_start date,
+  census date,
+  sixty_percent date,
   session_end date,
   primary key (institution, term, session)
 )
@@ -109,11 +126,11 @@ create table sessions (
 
 for key in sessions.keys():
   trans_cursor.execute("""
-insert into sessions values (%s, %s, %s, %s, %s, %s, %s, %s)
-""", (key.institution, key.term, key.session,
-      sessions[key].first_registration_date, sessions[key].open_registration_date,
+insert into sessions values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+""", (key.institution, key.term, key.session, sessions[key].first_registration_date,
+      sessions[key].last_waitlist_date, sessions[key].open_registration_date,
       sessions[key].last_registration_date, sessions[key].session_start_date,
-      sessions[key].session_end_date))
+      sessions[key].census_date, sessions[key].sixty_percent_date, sessions[key].session_end_date))
 trans_conn.commit()
 
 # Admissions Table
@@ -171,6 +188,7 @@ Admission_Event = namedtuple('Admission_Event',
     Complete","Completed Date","Application Date","Graduation Date","Acad Level","Override
     Deposit","External Application"
 """
+start_time = time.time()  # Everything before this happens sooo fast!
 print('Read Admissions file', file=sys.stderr)
 with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as atf:
   admissions_reader = csv.reader(atf)
@@ -212,8 +230,11 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
                                    row.action_reason,
                                    action_date,
                                    effective_date])
-print(f'{len(admittees.keys()):,} Transfer Admittees\nBuild admissions table', file=sys.stderr)
+print(f'{len(admittees.keys()):,} Transfer Admittees', file=sys.stderr)
+end_read_admit = time.time()
+print(f'That took {min_sec(end_read_admit - start_time)}', file=sys.stderr)
 
+print('Build admissions table', file=sys.stderr)
 trans_cursor.execute("""
 drop table if exists admissions;
 
@@ -264,6 +285,9 @@ with open('./reports/action-effective_differences.csv', 'w') as aed:
   print('Weeks, Frequency', file=aed)
   for days in sorted(counts.keys()):
     print(f'{days:4}, {counts[days]}', file=aed)
+
+end_build_admit = time.time()
+print(f'That took {min_sec(end_build_admit - end_read_admit)}', file=sys.stderr)
 
 
 # registraton_factory()
@@ -321,7 +345,9 @@ with open(registrations_table_file, encoding='ascii', errors='backslashreplace')
         registration_events[registration_key] = {'first_registration_date': first,
                                                  'last_registration_date': last}
 
-print('\rBuild registrations table', file=sys.stderr)
+end_read_regis = time.time()
+print(32 * ' ', f'\rThat took {min_sec(end_read_regis - end_build_admit)}', file=sys.stderr)
+print('Build registrations table', file=sys.stderr)
 
 trans_cursor.execute("""
 drop table if exists registrations;
@@ -339,5 +365,8 @@ insert into registrations values (%s, %s, %s, %s, %s)
 """, (registration_key.student_id, registration_key.institution, registration_key.term,
       registration_events[registration_key]['first_registration_date'],
       registration_events[registration_key]['last_registration_date']))
+end_build_regis = time.time()
+print(f'That took {min_sec(end_build_regis - end_read_regis)}', file=sys.stderr)
+print(f'Total time: {min_sec(end_build_regis - start_time)}', file=sys.stderr)
 
 trans_conn.commit()
