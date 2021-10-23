@@ -8,8 +8,7 @@ from time import time
 from pathlib import Path
 
 from pgconnection import PgConnection
-
-from build_timeline_tables import min_sec
+from timeline_utils import min_sec
 
 """ To update the timeline data, the baseline tables need to be up to date. Updating them is a
     a manual process. Then the timeline tables can be re-built.

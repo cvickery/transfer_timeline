@@ -13,14 +13,10 @@ from collections import namedtuple, defaultdict
 from pathlib import Path
 
 from pgconnection import PgConnection
+from timeline_utils import min_sec
 
 soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, [0x800, hard])
-
-
-def min_sec(arg: float) -> str:
-  mins, secs = divmod(arg, 60)
-  return f'{int(mins)}:{int(secs):02}'
 
 
 # Development connection

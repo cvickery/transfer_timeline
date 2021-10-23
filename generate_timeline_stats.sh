@@ -13,8 +13,8 @@ terms='1199 1202 1209 1212 1219 1222'
 # consistent meaning of "goodness".
 event_pairs='apply:admit admit:commit commit:matric admit:matric admit:first_eval admit:latest_eval
  admit:start_reg commit:first_eval commit:latest_eval matric:first_eval matric:latest_eval
- first_eval:start_reg latest_eval:start_reg first_eval:start_cls last_eval:first_cls
- first_eval:census last_eval:census'
+ first_eval:start_reg latest_eval:start_reg first_eval:first_cls latest_eval:first_cls
+ first_eval:census latest_eval:census'
 
 # Be sure all the query data, except for evaluations, is up to date.
 echo Check Query Data 2>&1
@@ -22,6 +22,10 @@ echo Check Query Data 2>&1
 if [[ $? != 0 ]]
 then exit
 fi
+
+# Rebuild tables
+echo Rebuild Timeline Tables 2>&1
+./build_timeline_tables.py
 
 # Run the process
 echo Generate Timeline Statistics 2>&1

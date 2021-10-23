@@ -60,7 +60,7 @@ from collections import namedtuple, defaultdict
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 
-from build_baseline_tables import min_sec
+from timeline_utils import min_sec
 from pgconnection import PgConnection
 
 
