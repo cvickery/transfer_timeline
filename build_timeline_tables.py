@@ -25,6 +25,7 @@ def min_sec(arg: float) -> str:
 
 # Development connection
 logfile = open('./build_baseline_tables.log', 'w')
+print('Start Build Timeline Tables', file=sys.stderr)
 
 # Connect to data sources
 # -------------------------------------------------------------------------------------------------
@@ -367,6 +368,6 @@ insert into registrations values (%s, %s, %s, %s, %s)
       registration_events[registration_key]['last_registration_date']))
 end_build_regis = time.time()
 print(f'That took {min_sec(end_build_regis - end_read_regis)}', file=sys.stderr)
-print(f'Total time: {min_sec(end_build_regis - start_time)}', file=sys.stderr)
+print(f'Build Timeline Tables took {min_sec(end_build_regis - start_time)}', file=sys.stderr)
 
 trans_conn.commit()
