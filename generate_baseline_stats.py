@@ -54,11 +54,13 @@ import sys
 import argparse
 import datetime
 import statistics
+import time
 
 from collections import namedtuple, defaultdict
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 
+from build_baseline_tables import min_sec
 from pgconnection import PgConnection
 
 
@@ -129,6 +131,7 @@ event_names = {'apply': 'Apply',
                'first_enr': 'First Registered',
                'latest_enr': 'Latest Registered',
                'first_cls': 'Start Classes',
+               'census': 'Census',
                'admin': 'Admin',
                }
 
@@ -151,6 +154,7 @@ def events_dict():
   # Session info is same for all students in cohort
   events['start_reg'] = session.first_registration
   events['first_cls'] = session.classes_start
+  events['census'] = session.census
   events['admin'] = []   # List of dein/wadm events with their dates
   return events
 
@@ -223,6 +227,8 @@ cohort_report = open('./cohort_report.txt', 'w')
 #   cohorts[(QNS, 1212)] = {12345678: {appl: 2020-10-10, admt: 2020-10-20, wadm: ...},
 #                           87654321: {appl: 2020-11-11, admt: 2020-11-22, wadm: ...},
 #                           ...}
+start_time = time.time()
+print('Begin Generate Timeline Statistics\nBuild Cohorts', file=sys.stderr)
 cohorts = dict()
 for institution in institutions:
   for admit_term in sorted(admit_terms, key=lambda x: x.term):
@@ -232,8 +238,9 @@ for institution in institutions:
 
     # Get session events, which are the same for all students in the cohort
     # ---------------------------------------------------------------------------------------------
-    Session = namedtuple('Session', 'institution term session first_registration open_registration '
-                         'last_registration classes_start classes_end ')
+    Session = namedtuple('Session', 'institution term session first_registration '
+                         'last_waitlist open_registration last_registration '
+                         'classes_start census sixty_percent classes_end')
     cursor.execute(f"""
         select * from sessions where institution = '{institution}' and term = {admit_term.term}
         """)
@@ -282,7 +289,6 @@ for institution in institutions:
         event_type = action_to_event[program_action]
         cohorts[cohort_key][int(row.student_id)][event_type] = effective_date
 
-    print(f'{len(cohorts[cohort_key]):7,} students in {cohort_key} cohort', file=sys.stderr)
     print(f'{len(cohorts[cohort_key]):7,} students in {cohort_key} cohort', file=cohort_report)
     assert len(student_ids) == len(cohorts[cohort_key])
     student_id_list = ','.join(f'{id}' for id in student_ids)   # for looking up registrations
@@ -325,9 +331,12 @@ for institution in institutions:
         if (cohorts[cohort_key][row.student_id]['latest_enr'] is None
             or row.last_date > cohorts[cohort_key][row.student_id]['latest_enr']):
           cohorts[cohort_key][row.student_id]['latest_enr'] = row.last_date
+    end_build = time.time()
+    print(f'That took {min_sec(end_build - start_time)}', file=sys.stderr)
 
     # Create a spreadsheet with the cohort's events for debugging/tableauing
     # ---------------------------------------------------------------------------------------------
+    print('Generate Timelines', file=sys.stderr)
     with open(f'./timelines/{institution}-{admit_term.term}.csv', 'w') as spreadsheet:
       print('Student ID,', ','.join([f'{event_names[name]}' for name in event_names.keys()]),
             file=spreadsheet)
@@ -389,6 +398,8 @@ for institution in institutions:
         else:
           print('### Not enough data.', file=report)
 
+end_timelines = time.time()
+print(f'That took {min_sec(end_timelines - end_build)}\nGenerate Workbook', file=sys.stderr)
 
 # Generate an Excel workbook
 # ------------------------------------------------------------------------------------------------
@@ -572,5 +583,6 @@ for event_pair in event_pairs:
 
 del wb['Sheet']
 wb.save('./debug.xlsx')
-
-exit()
+end_time = time.time()
+print(f'That took {min_sec(end_time - end_timelines)}\n'
+      f'Generate Timeline Statistics took {min_sec(end_time - start_time)}')

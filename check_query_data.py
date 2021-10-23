@@ -9,6 +9,8 @@ from pathlib import Path
 
 from pgconnection import PgConnection
 
+from build_baseline_tables import min_sec
+
 """ To update the timeline data, the baseline tables need to be up to date. Updating them is a
     a manual process. Then the timeline tables can be re-built.
 """
@@ -42,18 +44,10 @@ if warnings:
 
 # Rebuild the baseline tables
 baseline_start_time = time()
-print('Rebuilding the baseline tables')
+print('Rebuild Timeline Tables')
 os.system(f'{project_dir}/build_baseline_tables.py')
-print(f'That took {int(time() - baseline_start_time)} seconds')
+print(f'Rebuild Timeline Tables took {min_sec(time() - baseline_start_time)}',
+      file=sys.stderr)
 
 # Normal exit
 exit(0)
-
-# # Re-generate the timeline spreadsheets
-# timelines_start_time = time()
-# print('Replacing all timeline spreadsheets')
-# timelines_dir = Path(project_dir, 'timelines')
-# os.system(f'{project_dir}/generate_baseline_stats.sh')
-# print(f'That took {time() - timelines_start_time} seconds')
-
-# print(f'{time() - baseline_start_time} total seconds')

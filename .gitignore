@@ -11,3 +11,4 @@
 /skipped
 /build_baseline_tables.log
 /grouped_timelines.log
+/__pycache__/

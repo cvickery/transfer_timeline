@@ -13,7 +13,8 @@ terms='1199 1202 1209 1212 1219 1222'
 # consistent meaning of "goodness".
 event_pairs='apply:admit admit:commit commit:matric admit:matric admit:first_eval admit:latest_eval
  admit:start_reg commit:first_eval commit:latest_eval matric:first_eval matric:latest_eval
- first_eval:start_reg latest_eval:start_reg'
+ first_eval:start_reg latest_eval:start_reg first_eval:start_cls last_eval:start_cls
+ first_eval:census last_eval:census'
 
 # Be sure all the query data, except for evaluations, is up to date.
 ./check_query_data.py
@@ -22,7 +23,7 @@ then exit
 fi
 
 # Run the process
-time ./generate_baseline_stats.py \
+./generate_baseline_stats.py \
  -i $institutions \
  -t $terms \
  -e $event_pairs
