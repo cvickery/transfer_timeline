@@ -42,7 +42,7 @@ if warnings:
     print('Abandoning update', file=sys.stderr)
     exit(-1)
   else:
-    print('Skipping build step', file=sys.stderr)
+    print('Skipping re-build tables step', file=sys.stderr)
     exit(1)
 # Normal exit
 print('Query Check OK', file=sys.stderr)

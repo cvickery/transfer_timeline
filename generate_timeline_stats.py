@@ -398,7 +398,7 @@ for institution in institutions:
           print('### Not enough data.', file=report)
 
 end_timelines = time.time()
-print(f'That took {min_sec(end_timelines - end_build)}\nGenerate Workbook', file=sys.stderr)
+print(f'That took {min_sec(end_timelines - start_time)}\nGenerate Workbook', file=sys.stderr)
 
 # Generate an Excel workbook
 # ------------------------------------------------------------------------------------------------

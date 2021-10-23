@@ -21,13 +21,19 @@ echo Check Query Data 2>&1
 ./check_query_data.py
 
 case $? in
-  0)  # Rebuild tables
-      echo Rebuild Timeline Tables 2>&1
-      ./build_timeline_tables.py
-      ;;
-  255) exit
-      ;;
-  *)  ;;
+  0)    # Queries up to date: rebuild tables
+        echo Rebuild Timeline Tables 2>&1
+        ./build_timeline_tables.py
+        ;;
+  1)    # Queries not up to date, but user chose to continue
+        ;;
+  255)  # Queries not up to date and no user override
+        echo Download new query firles from PeopleSoft
+        exit
+        ;;
+  *)    echo "Unexpected response ($?) from check_queiry_data.py"
+        exit 1
+        ;;
 esac
 
 # Run the process
