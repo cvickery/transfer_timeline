@@ -228,7 +228,9 @@ cohort_report = open('./cohort_report.txt', 'w')
 #                           87654321: {appl: 2020-11-11, admt: 2020-11-22, wadm: ...},
 #                           ...}
 start_time = time.time()
-print('Begin Generate Timeline Statistics\nBuild Cohorts', file=sys.stderr)
+num_cohorts = len(admit_terms) * len(institutions)
+print(f'Begin Generate Timeline Statistics\n  {len(event_pairs)} Event Pairs\n'
+      f'  {num_cohorts} Cohorts', file=sys.stderr)
 cohorts = dict()
 for institution in institutions:
   for admit_term in sorted(admit_terms, key=lambda x: x.term):
@@ -331,12 +333,9 @@ for institution in institutions:
         if (cohorts[cohort_key][row.student_id]['latest_enr'] is None
             or row.last_date > cohorts[cohort_key][row.student_id]['latest_enr']):
           cohorts[cohort_key][row.student_id]['latest_enr'] = row.last_date
-    end_build = time.time()
-    print(f'That took {min_sec(end_build - start_time)}', file=sys.stderr)
 
     # Create a spreadsheet with the cohort's events for debugging/tableauing
     # ---------------------------------------------------------------------------------------------
-    print('Generate Timelines', file=sys.stderr)
     with open(f'./timelines/{institution}-{admit_term.term}.csv', 'w') as spreadsheet:
       print('Student ID,', ','.join([f'{event_names[name]}' for name in event_names.keys()]),
             file=spreadsheet)

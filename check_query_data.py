@@ -39,7 +39,11 @@ if warnings:
   print(f'WARNING: {len(warnings)} of the key query files {is_are} out of date.'
         f'\n Proceed anyway? (yN) ', end='')
   if not input().lower().startswith('y'):
-    sys.exit('Update abandoned.')
+    print('Abandoning update', file=sys.stderr)
+    exit(-1)
+  else:
+    print('Skipping build step', file=sys.stderr)
+    exit(1)
 # Normal exit
 print('Query Check OK', file=sys.stderr)
 exit(0)

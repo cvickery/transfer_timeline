@@ -19,13 +19,16 @@ event_pairs='apply:admit admit:commit commit:matric admit:matric admit:first_eva
 # Be sure all the query data, except for evaluations, is up to date.
 echo Check Query Data 2>&1
 ./check_query_data.py
-if [[ $? != 0 ]]
-then exit
-fi
 
-# Rebuild tables
-echo Rebuild Timeline Tables 2>&1
-./build_timeline_tables.py
+case $? in
+  0)  # Rebuild tables
+      echo Rebuild Timeline Tables 2>&1
+      ./build_timeline_tables.py
+      ;;
+  255) exit
+      ;;
+  *)  ;;
+esac
 
 # Run the process
 echo Generate Timeline Statistics 2>&1
