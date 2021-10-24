@@ -4,14 +4,19 @@
     all primary keys to avoid inserts that will fail.
 """
 
+import argparse
 import csv
 import datetime
+import resource
 import sys
-import argparse
 
 from collections import namedtuple, defaultdict
 from pathlib import Path
+
 from pgconnection import PgConnection
+
+soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+resource.setrlimit(resource.RLIMIT_NOFILE, [0x800, hard])
 
 parser = argparse.ArgumentParser('Update Transfers')
 parser.add_argument('-np', '--no_progress', action='store_true')

@@ -8,10 +8,16 @@
 
 import csv
 import datetime
+import resource
 import sys
+
 from collections import namedtuple
 from pathlib import Path
+
 from pgconnection import PgConnection
+
+soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+resource.setrlimit(resource.RLIMIT_NOFILE, [0x800, hard])
 
 possibles = Path('./downloads').glob('*FULL*')
 the_file = None

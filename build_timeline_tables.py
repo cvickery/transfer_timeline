@@ -62,8 +62,30 @@ def session_factory(args):
   return Session._make(args)
 
 
-Session = namedtuple('Session', 'first_registration_date last_waitlist_date open_registration_date '
-                     'last_registration_date session_start_date census_date sixty_percent_date '
+"""
+Institution
+Career
+Term
+Session
+Session Beginning Date        session_start
+Session End Date              session_end
+Open Enrollment Date          open_enrollment
+Enrollment Control Session
+Appointment Control Session
+First Date to Enroll          early_enrollment
+Last Date to Enroll           end_enrollment
+Last Date for Wait List       last_waitlist
+Holiday Schedule
+Weeks of Instruction
+Census Date                   census_date
+Use Dynamic Class Dates
+Sixty Percent Point in Time   sixty_percent
+Facility Assignment Run Date
+SYSDATE
+"""
+
+Session = namedtuple('Session', 'first_enrollment_date last_waitlist_date open_enrollment_date '
+                     'end_enrollment_date session_start_date census_date sixty_percent_date '
                      'session_end_date')
 Session_Key = namedtuple('Session_Key', 'institution term session')
 sessions = defaultdict(session_factory)
@@ -109,12 +131,12 @@ create table sessions (
   institution text,
   term int,
   session text,
-  first_registration date,
+  early_enrollment date,
   last_waitlist date,
-  open_registration date,
-  last_registration date,
+  open_enrollment date,
+  end_enrollment date,
   session_start date,
-  census date,
+  census_date date,
   sixty_percent date,
   session_end date,
   primary key (institution, term, session)
@@ -124,12 +146,12 @@ create table sessions (
 for key in sessions.keys():
   trans_cursor.execute("""
 insert into sessions values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-""", (key.institution, key.term, key.session, sessions[key].first_registration_date,
-      sessions[key].last_waitlist_date, sessions[key].open_registration_date,
-      sessions[key].last_registration_date, sessions[key].session_start_date,
+""", (key.institution, key.term, key.session, sessions[key].first_enrollment_date,
+      sessions[key].last_waitlist_date, sessions[key].open_enrollment_date,
+      sessions[key].end_enrollment_date, sessions[key].session_start_date,
       sessions[key].census_date, sessions[key].sixty_percent_date, sessions[key].session_end_date))
 trans_conn.commit()
-
+exit()
 # Admissions Table
 # -------------------------------------------------------------------------------------------------
 """ First build the program_reasons table in order to have the descriptions of the program actions.
@@ -290,7 +312,7 @@ print(f'That took {min_sec(end_build_admit - end_read_admit)}', file=sys.stderr)
 # registraton_factory()
 # -------------------------------------------------------------------------------------------------
 def registration_factory():
-  return {'first_registration_date': None, 'last_registration_date': None}
+  return {'early_enrollment_date': None, 'end_enrollment_date': None}
 
 
 # Process registration
@@ -329,8 +351,8 @@ with open(registrations_table_file, encoding='ascii', errors='backslashreplace')
       except ValueError as ve:
         print(f'Enrollment date situation: {row}', file=logfile)
         continue
-      first = registration_events[registration_key]['first_registration_date']
-      last = registration_events[registration_key]['last_registration_date']
+      first = registration_events[registration_key]['early_enrollment_date']
+      last = registration_events[registration_key]['end_enrollment_date']
       changed = False
       if first is None or enrollment_date < first:
         first = enrollment_date
@@ -339,8 +361,8 @@ with open(registrations_table_file, encoding='ascii', errors='backslashreplace')
         last = enrollment_date
         changed = True
       if changed:
-        registration_events[registration_key] = {'first_registration_date': first,
-                                                 'last_registration_date': last}
+        registration_events[registration_key] = {'early_enrollment_date': first,
+                                                 'end_enrollment_date': last}
 
 end_read_regis = time.time()
 print(32 * ' ', f'\rThat took {min_sec(end_read_regis - end_build_admit)}', file=sys.stderr)
@@ -360,8 +382,8 @@ for registration_key in registration_events.keys():
   trans_cursor.execute(f"""
 insert into registrations values (%s, %s, %s, %s, %s)
 """, (registration_key.student_id, registration_key.institution, registration_key.term,
-      registration_events[registration_key]['first_registration_date'],
-      registration_events[registration_key]['last_registration_date']))
+      registration_events[registration_key]['early_enrollment_date'],
+      registration_events[registration_key]['end_enrollment_date']))
 end_build_regis = time.time()
 print(f'That took {min_sec(end_build_regis - end_read_regis)}', file=sys.stderr)
 print(f'Build Timeline Tables took {min_sec(end_build_regis - start_time)}', file=sys.stderr)

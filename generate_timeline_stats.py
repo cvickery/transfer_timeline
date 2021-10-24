@@ -125,13 +125,14 @@ event_names = {'apply': 'Apply',
                'admit': 'Admit',
                'commit': 'Commit',
                'matric': 'Matric',
-               'first_eval': 'First Eval',
-               'latest_eval': 'Latest Eval',
-               'start_reg': 'Start Registration',
-               'first_enr': 'First Registered',
-               'latest_enr': 'Latest Registered',
-               'first_cls': 'Start Classes',
-               'census': 'Census',
+               'first_eval': 'First Evaluation',
+               'latest_eval': 'Latest Evaluation',
+               'start_early_enr': 'Start Early Enrollment',
+               'start_open_enr': 'Start Open Enrollment',
+               'first_reg': 'First Registration',
+               'latest_reg': 'Latest Registration',
+               'start_classes': 'Start Classes',
+               'census_date': 'Census Date',
                'admin': 'Admin',
                }
 
@@ -152,9 +153,10 @@ def events_dict():
   """
   events = {key: None for key in event_types}
   # Session info is same for all students in cohort
-  events['start_reg'] = session.first_registration
-  events['first_cls'] = session.classes_start
-  events['census'] = session.census
+  events['start_early_enr'] = session.first_registration
+  events['start_open_enr'] = session.start_open_registration
+  events['start_classes'] = session.session_start
+  events['census_date'] = session.census
   events['admin'] = []   # List of dein/wadm events with their dates
   return events
 
@@ -241,8 +243,8 @@ for institution in institutions:
     # Get session events, which are the same for all students in the cohort
     # ---------------------------------------------------------------------------------------------
     Session = namedtuple('Session', 'institution term session first_registration '
-                         'last_waitlist open_registration last_registration '
-                         'classes_start census sixty_percent classes_end')
+                         'last_waitlist start_open_enristration last_registration '
+                         'classes_start census_date sixty_percent classes_end')
     cursor.execute(f"""
         select * from sessions where institution = '{institution}' and term = {admit_term.term}
         """)
@@ -309,11 +311,11 @@ for institution in institutions:
       for row in cursor.fetchall():
         student_id = int(row.student_id)
         if (posted_date := row.posted_date) > datetime.date(1901, 1, 1):
-          if (cohorts[cohort_key][student_id]['first_eval'] is None
-              or posted_date < cohorts[cohort_key][student_id]['first_eval']):
+          if cohorts[cohort_key][student_id]['first_eval'] is None \
+             or posted_date < cohorts[cohort_key][student_id]['first_eval']:
             cohorts[cohort_key][student_id]['first_eval'] = posted_date
-          if (cohorts[cohort_key][student_id]['latest_eval'] is None
-              or posted_date > cohorts[cohort_key][student_id]['latest_eval']):
+          if cohorts[cohort_key][student_id]['latest_eval'] is None \
+             or posted_date > cohorts[cohort_key][student_id]['latest_eval']:
             cohorts[cohort_key][student_id]['latest_eval'] = posted_date
 
     # Enrollment dates
@@ -327,12 +329,12 @@ for institution in institutions:
            and student_id in ({student_id_list})
         """)
       for row in cursor.fetchall():
-        if (cohorts[cohort_key][row.student_id]['first_enr'] is None
-            or row.first_date < cohorts[cohort_key][row.student_id]['first_enr']):
-          cohorts[cohort_key][row.student_id]['first_enr'] = row.first_date
-        if (cohorts[cohort_key][row.student_id]['latest_enr'] is None
-            or row.last_date > cohorts[cohort_key][row.student_id]['latest_enr']):
-          cohorts[cohort_key][row.student_id]['latest_enr'] = row.last_date
+        if cohorts[cohort_key][row.student_id]['first_reg'] is None \
+           or row.first_date < cohorts[cohort_key][row.student_id]['first_reg']:
+          cohorts[cohort_key][row.student_id]['first_reg'] = row.first_date
+        if cohorts[cohort_key][row.student_id]['latest_reg'] is None \
+           or row.last_date > cohorts[cohort_key][row.student_id]['latest_reg']:
+          cohorts[cohort_key][row.student_id]['latest_reg'] = row.last_date
 
     # Create a spreadsheet with the cohort's events for debugging/tableauing
     # ---------------------------------------------------------------------------------------------
