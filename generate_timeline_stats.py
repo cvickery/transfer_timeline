@@ -125,14 +125,14 @@ event_names = {'apply': 'Apply',
                'admit': 'Admit',
                'commit': 'Commit',
                'matric': 'Matric',
-               'first_eval': 'First Evaluation',
-               'latest_eval': 'Latest Evaluation',
-               'start_early_enr': 'Start Early Enrollment',
-               'start_open_enr': 'Start Open Enrollment',
-               'first_reg': 'First Registration',
-               'latest_reg': 'Latest Registration',
+               'first_eval': 'First Eval',
+               'latest_eval': 'Latest Eval',
+               'start_early_enr': 'Early Enroll',
+               'start_open_enr': 'Open Enroll',
                'start_classes': 'Start Classes',
                'census_date': 'Census Date',
+               'first_reg': 'First Regis',
+               'latest_reg': 'Latest Regis',
                'admin': 'Admin',
                }
 
@@ -152,11 +152,11 @@ def events_dict():
   """ Factory method to produce default dates (None) for a student's events record.
   """
   events = {key: None for key in event_types}
-  # Session info is same for all students in cohort
-  events['start_early_enr'] = session.first_registration
-  events['start_open_enr'] = session.start_open_registration
+  # Session info is same for all students in cohort, so that is initialized here.
+  events['start_early_enr'] = session.early_enrollment
+  events['start_open_enr'] = session.open_enrollment
   events['start_classes'] = session.session_start
-  events['census_date'] = session.census
+  events['census_date'] = session.census_date
   events['admin'] = []   # List of dein/wadm events with their dates
   return events
 
@@ -232,7 +232,8 @@ cohort_report = open('./cohort_report.txt', 'w')
 start_time = time.time()
 num_cohorts = len(admit_terms) * len(institutions)
 print(f'Begin Generate Timeline Statistics\n  {len(event_pairs)} Event Pairs\n'
-      f'  {num_cohorts} Cohorts', file=sys.stderr)
+      f'  {len(admit_terms)} terms × {len(institutions)} institutions => {num_cohorts} Cohorts',
+      file=sys.stderr)
 cohorts = dict()
 for institution in institutions:
   for admit_term in sorted(admit_terms, key=lambda x: x.term):
@@ -242,9 +243,9 @@ for institution in institutions:
 
     # Get session events, which are the same for all students in the cohort
     # ---------------------------------------------------------------------------------------------
-    Session = namedtuple('Session', 'institution term session first_registration '
-                         'last_waitlist start_open_enristration last_registration '
-                         'classes_start census_date sixty_percent classes_end')
+    Session = namedtuple('Session', 'institution term session early_enrollment '
+                         'open_enrollment last_registration last_waitlist '
+                         'session_start census_date sixty_percent session_end')
     cursor.execute(f"""
         select * from sessions where institution = '{institution}' and term = {admit_term.term}
         """)
