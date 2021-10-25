@@ -63,30 +63,34 @@ def session_factory(args):
 
 
 """
-Institution
+QNS_CV_SESSION_TABLE          DB column name      Event Name
+-------------------------------------------------------------------
+Institution                   institution
 Career
-Term
-Session
-Session Beginning Date        session_start
-Session End Date              session_end
-Open Enrollment Date          open_enrollment
+Term                          term
+Session                       session
+Session Beginning Date        session_start       start_classes
+Session End Date              session_end         end_classes*
+Open Enrollment Date          open_enrollment     open_enrollment
 Enrollment Control Session
 Appointment Control Session
-First Date to Enroll          early_enrollment
-Last Date to Enroll           end_enrollment
+First Date to Enroll          early_enrollment    early_enrollment
 Last Date for Wait List       last_waitlist
+Last Date to Enroll           end_enrollment      end_enrollment*
 Holiday Schedule
 Weeks of Instruction
-Census Date                   census_date
+Census Date                   census_date         census_date
 Use Dynamic Class Dates
-Sixty Percent Point in Time   sixty_percent
+Sixty Percent Point in Time   sixty_percent       sixty_percent*
 Facility Assignment Run Date
 SYSDATE
+* Not currently exposed by generate_timeline_statistics.py
 """
 
-Session = namedtuple('Session', 'first_enrollment_date last_waitlist_date open_enrollment_date '
-                     'end_enrollment_date session_start_date census_date sixty_percent_date '
-                     'session_end_date')
+# Session and Session_Key field names match Postgres column names
+Session = namedtuple('Session', 'early_enrollment open_enrollment last_waitlist '
+                     'end_enrollment session_start census_date sixty_percent '
+                     'session_end')
 Session_Key = namedtuple('Session_Key', 'institution term session')
 sessions = defaultdict(session_factory)
 with open(session_table_file) as stf:
@@ -96,30 +100,34 @@ with open(session_table_file) as stf:
       Row = namedtuple('Row', [col.lower().replace(' ', '_') for col in line])
     else:
       row = Row._make(line)
+      session_key = Session_Key._make([row.institution[0:3], int(row.term), row.session])
       if row.career not in ['UGRD', 'UKCC', 'ULAG'] or row.institution[0:3] == 'UAP':
         continue
-      first_enrollment_date = last_waitlist_date = open_enrollment_date = last_enrollment_date = \
-          session_start_date = census_date = sixty_percent_date = session_end_date = None
-      for key, value in {row.first_date_to_enroll: 'first_enrollment_date',
-                         row.last_date_for_wait_list: 'last_waitlist_date',
-                         row.open_enrollment_date: 'open_enrollment_date',
-                         row.last_date_to_enroll: 'last_enrollment_date',
-                         row.session_beginning_date: 'session_start_date',
-                         row.census_date: 'census_date',
-                         row.sixty_percent_point_in_time: 'sixty_percent_date',
-                         row.session_end_date: 'session_end_date',
+      # Default value for missing/malformed dates
+      early_enrollment = open_enrollment = last_waitlist = end_enrollment = \
+          session_start = census_date = sixty_percent = session_end = None
+      # Convert dates to datetime objects
+      for key, value in {'early_enrollment': row.first_date_to_enroll,
+                         'open_enrollment': row.open_enrollment_date,
+                         'last_waitlist': row.last_date_for_wait_list,
+                         'end_enrollment': row.last_date_to_enroll,
+                         'session_start': row.session_beginning_date,
+                         'census_date': row.census_date,
+                         'sixty_percent': row.sixty_percent_point_in_time,
+                         'session_end': row.session_end_date,
                          }.items():
 
         try:
-          m, d, y = key.split('/')
-          globals()[value] = datetime.date(int(y), int(m), int(d))
+          m, d, y = value.split('/')
+          globals()[key] = datetime.date(int(y), int(m), int(d))
         except ValueError as ve:
           pass
-      session_key = Session_Key._make([row.institution[0:3], int(row.term), row.session])
-      sessions[session_key] = Session._make([first_enrollment_date, last_waitlist_date,
-                                            open_enrollment_date, last_enrollment_date,
-                                            session_start_date, census_date, sixty_percent_date,
-                                            session_end_date])
+
+      session_info = Session._make([early_enrollment, open_enrollment, last_waitlist,
+                                    end_enrollment, session_start, census_date, sixty_percent,
+                                    session_end])
+      sessions[session_key] = session_info
+
 
 # for session_key in sorted(sessions.keys()):
 #   if session_key.term % 10 == 6:
@@ -132,8 +140,8 @@ create table sessions (
   term int,
   session text,
   early_enrollment date,
-  last_waitlist date,
   open_enrollment date,
+  last_waitlist date,
   end_enrollment date,
   session_start date,
   census_date date,
@@ -145,13 +153,16 @@ create table sessions (
 
 for key in sessions.keys():
   trans_cursor.execute("""
-insert into sessions values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-""", (key.institution, key.term, key.session, sessions[key].first_enrollment_date,
-      sessions[key].last_waitlist_date, sessions[key].open_enrollment_date,
-      sessions[key].end_enrollment_date, sessions[key].session_start_date,
-      sessions[key].census_date, sessions[key].sixty_percent_date, sessions[key].session_end_date))
+    insert into sessions values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (key.institution, key.term, key.session, sessions[key].early_enrollment,
+          sessions[key].open_enrollment, sessions[key].last_waitlist,
+          sessions[key].end_enrollment, sessions[key].session_start,
+          sessions[key].census_date, sessions[key].sixty_percent,
+          sessions[key].session_end))
 trans_conn.commit()
-exit()
+
+print(f'{len(sessions):,} sessions', file=sys.stderr)
+
 # Admissions Table
 # -------------------------------------------------------------------------------------------------
 """ First build the program_reasons table in order to have the descriptions of the program actions.
