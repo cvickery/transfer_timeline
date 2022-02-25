@@ -59,7 +59,7 @@ Queries for Admissions (_CV\_QNS\_ADMISSIONS_), Registrations(_CV\_QNS\_STUDENT\
 Sessions (_QNS\_CV\_SESSION\_TABLE_) provide the dates for the events other than credit evaluations.
 These queries, along with some secondary tables giving details about fields in the Admissions
 table, are run manually on CUNYfirst, and saved in the _Admissions\_Registrations_ directory. The
-_build\_baseline\_tables.py_ module uses those queries to create and populate the remaining tables
+_build\_timeline\_tables.py_ module uses those queries to create and populate the remaining tables
 in the database.
 
 ### Grouped Timelines
@@ -70,11 +70,11 @@ manually.
 
 ### Report Generation
 
-The script _generate\_baseline\_stats.sh_ checks that the baseline table queries are up to date,
-and then uses _generate\_baseline\_stats.py_ to generate statistical reports on the number of days
+The script _generate\_timeline\_stats.sh_ checks that the timeline table queries are up to date,
+and then uses _generate\_timeline\_stats.py_ to generate statistical reports on the number of days
 between pairs of events. A master Excel spreadsheet is saved in the project directory, Markdown
 reports for each cohort and measure are saved in the _reports_ directory, and detailed timeline CSV
 files are saved in the _timelines_ directory.
 
-The _generate\_baseline\_stats.sh_ can be edited to select the cohorts and date-pairs to be
+The _generate\_timeline\_stats.sh_ can be edited to select the cohorts and date-pairs to be
 reported.
