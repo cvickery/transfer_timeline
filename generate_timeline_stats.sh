@@ -44,7 +44,7 @@ case $? in
   1)    # Queries not up to date, but user chose to continue
         ;;
   255)  # Queries not up to date and no user override
-        echo Download new query firles from PeopleSoft
+        echo Download new query files from PeopleSoft
         exit
         ;;
   *)    echo "Unexpected response ($?) from check_queiry_data.py"
