@@ -53,15 +53,15 @@
 import sys
 import argparse
 import datetime
+import psycopg
 import statistics
 import time
 
 from collections import namedtuple, defaultdict
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
-
+from psycopg.rows import namedtuple_row
 from timeline_utils import min_sec
-from pgconnection import PgConnection
 
 
 class AdmitTerm:
@@ -131,10 +131,25 @@ event_names = {'apply': 'Apply',
                'start_open_enr': 'Open Enroll',
                'start_classes': 'Start Classes',
                'census_date': 'Census Date',
-               'first_reg': 'First Regis',
-               'latest_reg': 'Latest Regis',
+               'first_reg': 'First Register',
+               'latest_reg': 'Latest Register',
                'admin': 'Admin',
                }
+
+event_definitions = {'NAME': 'DEFINITION (command line code)',
+                     'Apply': 'Student filed transfer application (apply)',
+                     'Admit': 'College admitted student (admit)',
+                     'Commit': 'Student committed to attend (commit)',
+                     'Matric': 'Student matriculated (matric)',
+                     'First Eval': 'First date college evaluated student’s courses (first_eval)',
+                     'Latest Eval': 'Latest date college evaluated student’s courses (latest_eval)',
+                     'Early Enroll': 'Start of early enrollment period (start_early_enr)',
+                     'Open Enroll': 'Start of open enrollment period (start_open_enr)',
+                     'Start Classes': 'First day of classes (start_classes)',
+                     'Census Date': 'Official enrollment headcount date (census_date)',
+                     'First Register': 'Date student first registered for courses (first_reg)',
+                     'Latest Register': 'Latest date student altered registration (latest_reg)',
+                     }
 
 # Admin "events" are included in the timelines spreadsheets for data verification; they can't be
 # used for measurements
@@ -153,9 +168,9 @@ def events_dict():
   """
   events = {key: None for key in event_types}
   # Session info is same for all students in cohort, so that is initialized here.
-  events['start_early_enr'] = session.early_enrollment
-  events['start_open_enr'] = session.open_enrollment
-  events['start_classes'] = session.session_start
+  events['start_early_enr'] = session.first_date_to_enroll
+  events['start_open_enr'] = session.open_enrollment_date
+  events['start_classes'] = session.session_beginning_date
   events['census_date'] = session.census_date
   events['admin'] = []   # List of dein/wadm events with their dates
   return events
@@ -168,13 +183,24 @@ parser.add_argument('-t', '--admit_terms', type=int, nargs='*', default=[])
 parser.add_argument('-i', '--institutions', nargs='*', default=[])
 parser.add_argument('-e', '--event_pairs', nargs='*', default=[])
 parser.add_argument('-d', '--debug', action='store_true')
+parser.add_argument('-n', '--event_names', action='store_true')
 args = parser.parse_args()
+
+if args.event_names:
+  print(f'            ')
+  for k, v in event_definitions.items():
+    print(f'{ k:16} {v}')
+  exit('')
 
 event_pairs = []
 event_type_list = '\n  '.join([t for t in event_types if t != 'wadm'])
+
 if len(args.event_pairs) < 1:
   print('NOTICE: no event pairs. No statistical reports will be produced.', file=sys.stderr)
+
 for arg in args.event_pairs:
+  if arg.startswith('#'):
+    continue
   try:
     earlier, later = arg.lower().split(':')
     if earlier in event_types and later in event_types:
@@ -210,9 +236,22 @@ institutions = [i.strip('01').upper() for i in args.institutions]
 for institution in institutions:
   if institution not in institution_names.keys():
     sys.exit(f'“{institution}” is not a valid CUNY institution')
+institutions_str = ','.join([f"'{institution}01'" for institution in institutions])
 
-conn = PgConnection('cuny_transfers')
-cursor = conn.cursor()
+# Create sessions cache dict indexed by {institution, term}
+with psycopg.connect('dbname=cuny_curriculum') as conn:
+  with conn.cursor(row_factory=namedtuple_row) as cursor:
+    cursor.execute(f"""
+    select * from cuny_sessions
+    where institution in ({institutions_str})
+      and session = '1'
+    """)
+    sessions_cache = defaultdict()
+    for row in cursor.fetchall():
+      sessions_cache[(row.institution[0:3], row.term)] = row
+
+conn = psycopg.connect('dbname=cuny_transfers')
+cursor = conn.cursor(row_factory=namedtuple_row)
 cohort_report = open('./cohort_report.txt', 'w')
 
 # Initialize Data Structures
@@ -241,21 +280,8 @@ for institution in institutions:
     student_ids = set()
     cohorts[cohort_key] = defaultdict(events_dict)
 
-    # Get session events, which are the same for all students in the cohort
-    # ---------------------------------------------------------------------------------------------
-    Session = namedtuple('Session', 'institution term session early_enrollment '
-                         'open_enrollment last_registration last_waitlist '
-                         'session_start census_date sixty_percent session_end')
-    cursor.execute(f"""
-        select * from sessions where institution = '{institution}' and term = {admit_term.term}
-        """)
-    session = None
-    for row in cursor.fetchall():
-      if session is None or row.session == '1':
-        session = Session._make(row)
-    if session is None:
-      print(f'No session found for {institution_names[institution]} {admit_term}')
-      continue
+    # Get session events for all students in the cohort
+    session = sessions_cache[(institution, admit_term.term)]
 
     # Add the students and their admission events to the cohort
     # ---------------------------------------------------------------------------------------------
@@ -368,9 +394,14 @@ for institution in institutions:
              and cohorts[cohort_key][student_id][earlier] != missing_date
              and cohorts[cohort_key][student_id][later] is not None
              and cohorts[cohort_key][student_id][later] != missing_date):
-            delta = (cohorts[cohort_key][student_id][later]
-                     - cohorts[cohort_key][student_id][earlier])
-
+            try:
+              delta = (cohorts[cohort_key][student_id][later]
+                       - cohorts[cohort_key][student_id][earlier])
+            except TypeError:
+              print(f'{cohort_key=} {student_id=} {earlier=} {later=} '
+                    f'{cohorts[cohort_key][student_id][earlier]=} '
+                    f'{cohorts[cohort_key][student_id][later]=}')
+              exit()
             deltas.append(delta.days)
             frequencies[delta.days] += 1
 

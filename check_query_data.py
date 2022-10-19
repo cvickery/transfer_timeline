@@ -15,7 +15,7 @@ from timeline_utils import min_sec
 """
 
 # Report the ages of the queries used to build baseline tables
-queries = ['CV_QNS_ADMISSIONS', 'CV_QNS_STUDENT_SUMMARY', 'QNS_CV_SESSION_TABLE',
+queries = ['CV_QNS_ADMISSIONS', 'CV_QNS_STUDENT_SUMMARY',
            'ADMIT_ACTION_TBL', 'ADMIT_TYPE_TBL', 'PROG_REASON_TBL']
 project_dir = Path('/Users/vickery/Projects/transfers_applied/')
 query_dir = Path(project_dir, 'Admissions_Registrations')
@@ -30,7 +30,7 @@ for query in queries:
       latest = file
   days = int((today - latest.stat().st_mtime) / sec_per_day)
   suffix = '' if days == 1 else 's'
-  if days > 0 and query in ['CV_QNS_ADMISSIONS', 'CV_QNS_STUDENT_SUMMARY', 'QNS_CV_SESSION_TABLE']:
+  if days > 0 and query in ['CV_QNS_ADMISSIONS', 'CV_QNS_STUDENT_SUMMARY']:
     warnings.append(query)
   print(f'Latest {query} is {days} day{suffix} old.')
 
