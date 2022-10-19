@@ -2,7 +2,19 @@
 
 # Generate/Update a standardized set of event interval data.
 
-# Institution order will be preserved in the generated Excel spreadsheet
+# Command line arguments
+for arg in $@
+do
+  case $arg in
+    'skip_updates') SKIP_UPDATES=True
+                    ;;
+     *) echo "Unrecognized argument: $arg"
+        exit 1
+        ;;
+  esac
+done
+
+# Institution order will be preserved in the generated Excel spreadsheet (community colleges first)
 institutions='bcc bmc hos kcc lag qcc bar bkl csi cty htr jjc leh mec nyt qns sps yrk'
 
 # Admit terms list should be updated manually as new terms "of interest" become relevant.
@@ -32,7 +44,7 @@ event_pairs='apply:admit
              #latest_eval:start_classes
              #first_eval:census_date
              #latest_eval:census_date'
-# All event pairs
+# Interesting event pairs
 event_pairs='apply:admit
              admit:commit
              commit:matric
@@ -51,8 +63,10 @@ event_pairs='apply:admit
              first_eval:census_date
              latest_eval:census_date'
 
+stats='n mean median'
+
 # Skip table management if testing generator
-if [[ ! $TESTING ]]
+if [[ ! $SKIP_UPDATES ]]
 then
   # Be sure all the query data, except for evaluations, is up to date.
   echo Check Query Data 2>&1
@@ -73,7 +87,7 @@ then
           exit 1
           ;;
   esac
-else echo TESTING MODE: Skipped checking queries and build_timeline_tables.py
+else echo Skip checking queries and updating timeline tables
 fi
 
 # Run the process
@@ -81,7 +95,8 @@ echo Generate Timeline Statistics 2>&1
 ./generate_timeline_stats.py \
  -i $institutions \
  -t $terms \
- -e $event_pairs
+ -e $event_pairs \
+ -s $stats
 
 # Rename the Excel "debug" workbook for archival purposes
 mv debug.xlsx Transfer_Timeline_Intervals_`date +%Y-%m-%d`.xlsx

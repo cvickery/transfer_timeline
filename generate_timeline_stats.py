@@ -136,7 +136,7 @@ event_names = {'apply': 'Apply',
                'admin': 'Admin',
                }
 
-event_definitions = {'NAME': 'DEFINITION (command line code)',
+event_definitions = {'EVENT NAME': 'DEFINITION (command line code)',
                      'Apply': 'Student filed transfer application (apply)',
                      'Admit': 'College admitted student (admit)',
                      'Commit': 'Student committed to attend (commit)',
@@ -184,6 +184,17 @@ parser.add_argument('-i', '--institutions', nargs='*', default=[])
 parser.add_argument('-e', '--event_pairs', nargs='*', default=[])
 parser.add_argument('-d', '--debug', action='store_true')
 parser.add_argument('-n', '--event_names', action='store_true')
+parser.add_argument('-s', '--stats', nargs='*', default=['n',
+                                                         'median',
+                                                         'mean',
+                                                         'mode',
+                                                         'min',
+                                                         'max',
+                                                         'q1',
+                                                         'q2',
+                                                         'q3',
+                                                         'siqr',
+                                                         'std_dev'])
 args = parser.parse_args()
 
 if args.event_names:
@@ -196,7 +207,11 @@ event_pairs = []
 event_type_list = '\n  '.join([t for t in event_types if t != 'wadm'])
 
 if len(args.event_pairs) < 1:
-  print('NOTICE: no event pairs. No statistical reports will be produced.', file=sys.stderr)
+  exit('No event pairs.')
+
+stats_to_show = [arg.lower() for arg in args.stats]
+if len(stats_to_show) == 0:
+  exit('No stats')
 
 for arg in args.event_pairs:
   if arg.startswith('#'):
@@ -458,7 +473,7 @@ for event_pair in event_pairs:
     ws.cell(row, 2).font = bold
     ws.cell(row, 2).alignment = centered
 
-    # Everbody should have an N value
+    # Everybody should have an N value
     row += 1
     ws.cell(row, 1, 'N').font = bold
     values = [stat_values[institution][admit_term.term][event_pair].n
@@ -470,145 +485,155 @@ for event_pair in event_pairs:
     # because different statistics have different formatting rules
 
     # Median
-    row += 1
-    ws.cell(row, 1, 'Median').font = bold
-    values = []
-    for institution in institutions:
-      value = stat_values[institution][admit_term.term][event_pair].median
-      if value is None:
-        values.append('')
-      else:
-        values.append(value)
-    for col in range(2, 2 + len(headings) - 1):
-      ws.cell(row, col).value = values[col - 2]
-      ws.cell(row, col).number_format = '0'
-      ws.cell(row, col).font = bold
+    if 'median' in stats_to_show:
+      row += 1
+      ws.cell(row, 1, 'Median').font = bold
+      values = []
+      for institution in institutions:
+        value = stat_values[institution][admit_term.term][event_pair].median
+        if value is None:
+          values.append('')
+        else:
+          values.append(value)
+      for col in range(2, 2 + len(headings) - 1):
+        ws.cell(row, col).value = values[col - 2]
+        ws.cell(row, col).number_format = '0'
+        ws.cell(row, col).font = bold
 
     # Mean
-    row += 1
-    ws.cell(row, 1, 'Mean').font = bold
-    values = []
-    for institution in institutions:
-      value = stat_values[institution][admit_term.term][event_pair].mean
-      if value is None:
-        values.append('')
-      else:
-        values.append(value)
-    for col in range(2, 2 + len(headings) - 1):
-      ws.cell(row, col).value = values[col - 2]
-      ws.cell(row, col).number_format = '0'
+    if 'mean' in stats_to_show:
+      row += 1
+      ws.cell(row, 1, 'Mean').font = bold
+      values = []
+      for institution in institutions:
+        value = stat_values[institution][admit_term.term][event_pair].mean
+        if value is None:
+          values.append('')
+        else:
+          values.append(value)
+      for col in range(2, 2 + len(headings) - 1):
+        ws.cell(row, col).value = values[col - 2]
+        ws.cell(row, col).number_format = '0'
 
     # Mode
-    row += 1
-    ws.cell(row, 1, 'Mode').font = bold
-    values = []
-    for institution in institutions:
-      value = stat_values[institution][admit_term.term][event_pair].mode
-      if value is None:
-        values.append('')
-      else:
-        values.append(value)
-    for col in range(2, 2 + len(headings) - 1):
-      ws.cell(row, col).value = values[col - 2]
-      ws.cell(row, col).number_format = '0'
+    if 'mode' in stats_to_show:
+      row += 1
+      ws.cell(row, 1, 'Mode').font = bold
+      values = []
+      for institution in institutions:
+        value = stat_values[institution][admit_term.term][event_pair].mode
+        if value is None:
+          values.append('')
+        else:
+          values.append(value)
+      for col in range(2, 2 + len(headings) - 1):
+        ws.cell(row, col).value = values[col - 2]
+        ws.cell(row, col).number_format = '0'
 
-     # Min
-    row += 1
-    ws.cell(row, 1, 'Min').font = bold
-    values = []
-    for institution in institutions:
-      value = stat_values[institution][admit_term.term][event_pair].min_val
-      if value is None:
-        values.append('')
-      else:
-        values.append(value)
-    for col in range(2, 2 + len(headings) - 1):
-      ws.cell(row, col).value = values[col - 2]
-      ws.cell(row, col).number_format = '0'
+    # Min
+    if 'min' in stats_to_show:
+      row += 1
+      ws.cell(row, 1, 'Min').font = bold
+      values = []
+      for institution in institutions:
+        value = stat_values[institution][admit_term.term][event_pair].min_val
+        if value is None:
+          values.append('')
+        else:
+          values.append(value)
+      for col in range(2, 2 + len(headings) - 1):
+        ws.cell(row, col).value = values[col - 2]
+        ws.cell(row, col).number_format = '0'
 
-     # Max
-    row += 1
-    ws.cell(row, 1, 'Max').font = bold
-    values = []
-    for institution in institutions:
-      value = stat_values[institution][admit_term.term][event_pair].max_val
-      if value is None:
-        values.append('')
-      else:
-        values.append(value)
-    for col in range(2, 2 + len(headings) - 1):
-      ws.cell(row, col).value = values[col - 2]
-      ws.cell(row, col).number_format = '0'
+    # Max
+    if 'max' in stats_to_show:
+      row += 1
+      ws.cell(row, 1, 'Max').font = bold
+      values = []
+      for institution in institutions:
+        value = stat_values[institution][admit_term.term][event_pair].max_val
+        if value is None:
+          values.append('')
+        else:
+          values.append(value)
+      for col in range(2, 2 + len(headings) - 1):
+        ws.cell(row, col).value = values[col - 2]
+        ws.cell(row, col).number_format = '0'
 
-     # Q1
-    row += 1
-    ws.cell(row, 1, 'Q1').font = bold
-    values = []
-    for institution in institutions:
-      value = stat_values[institution][admit_term.term][event_pair].q_1
-      if value is None:
-        values.append('')
-      else:
-        values.append(value)
-    for col in range(2, 2 + len(headings) - 1):
-      ws.cell(row, col).value = values[col - 2]
-      ws.cell(row, col).number_format = '0.0'
+    # Q1
+    if 'q1' in stats_to_show:
+      row += 1
+      ws.cell(row, 1, 'Q1').font = bold
+      values = []
+      for institution in institutions:
+        value = stat_values[institution][admit_term.term][event_pair].q_1
+        if value is None:
+          values.append('')
+        else:
+          values.append(value)
+      for col in range(2, 2 + len(headings) - 1):
+        ws.cell(row, col).value = values[col - 2]
+        ws.cell(row, col).number_format = '0.0'
 
-     # Q2
-    row += 1
-    ws.cell(row, 1, 'Q2').font = bold
-    values = []
-    for institution in institutions:
-      value = stat_values[institution][admit_term.term][event_pair].q_2
-      if value is None:
-        values.append('')
-      else:
-        values.append(value)
-    for col in range(2, 2 + len(headings) - 1):
-      ws.cell(row, col).value = values[col - 2]
-      ws.cell(row, col).number_format = '0.0'
+    # Q2
+    if 'q2' in stats_to_show:
+      row += 1
+      ws.cell(row, 1, 'Q2').font = bold
+      values = []
+      for institution in institutions:
+        value = stat_values[institution][admit_term.term][event_pair].q_2
+        if value is None:
+          values.append('')
+        else:
+          values.append(value)
+      for col in range(2, 2 + len(headings) - 1):
+        ws.cell(row, col).value = values[col - 2]
+        ws.cell(row, col).number_format = '0.0'
 
-     # Q3
-    row += 1
-    ws.cell(row, 1, 'Q3').font = bold
-    values = []
-    for institution in institutions:
-      value = stat_values[institution][admit_term.term][event_pair].q_3
-      if value is None:
-        values.append('')
-      else:
-        values.append(value)
-    for col in range(2, 2 + len(headings) - 1):
-      ws.cell(row, col).value = values[col - 2]
-      ws.cell(row, col).number_format = '0.0'
+    # Q3
+    if 'q3' in stats_to_show:
+      row += 1
+      ws.cell(row, 1, 'Q3').font = bold
+      values = []
+      for institution in institutions:
+        value = stat_values[institution][admit_term.term][event_pair].q_3
+        if value is None:
+          values.append('')
+        else:
+          values.append(value)
+      for col in range(2, 2 + len(headings) - 1):
+        ws.cell(row, col).value = values[col - 2]
+        ws.cell(row, col).number_format = '0.0'
 
-     # SIQR
-    row += 1
-    ws.cell(row, 1, 'SIQR').font = bold
-    values = []
-    for institution in institutions:
-      value = stat_values[institution][admit_term.term][event_pair].siqr
-      if value is None:
-        values.append('')
-      else:
-        values.append(value)
-    for col in range(2, 2 + len(headings) - 1):
-      ws.cell(row, col).value = values[col - 2]
-      ws.cell(row, col).number_format = '0.1'
+    # SIQR
+    if 'siqr' in stats_to_show:
+      row += 1
+      ws.cell(row, 1, 'SIQR').font = bold
+      values = []
+      for institution in institutions:
+        value = stat_values[institution][admit_term.term][event_pair].siqr
+        if value is None:
+          values.append('')
+        else:
+          values.append(value)
+      for col in range(2, 2 + len(headings) - 1):
+        ws.cell(row, col).value = values[col - 2]
+        ws.cell(row, col).number_format = '0.1'
 
-     # Std Dev
-    row += 1
-    ws.cell(row, 1, 'Std Dev').font = bold
-    values = []
-    for institution in institutions:
-      value = stat_values[institution][admit_term.term][event_pair].std_dev
-      if value is None:
-        values.append('')
-      else:
-        values.append(value)
-    for col in range(2, 2 + len(headings) - 1):
-      ws.cell(row, col).value = values[col - 2]
-      ws.cell(row, col).number_format = '0.1'
+    # Std Dev
+    if 'std_dev' in stats_to_show:
+      row += 1
+      ws.cell(row, 1, 'Std Dev').font = bold
+      values = []
+      for institution in institutions:
+        value = stat_values[institution][admit_term.term][event_pair].std_dev
+        if value is None:
+          values.append('')
+        else:
+          values.append(value)
+      for col in range(2, 2 + len(headings) - 1):
+        ws.cell(row, col).value = values[col - 2]
+        ws.cell(row, col).number_format = '0.1'
 
     # Empty row between Admit Terms
     row += 1
