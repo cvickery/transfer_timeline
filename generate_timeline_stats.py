@@ -78,7 +78,7 @@ class AdmitTerm:
 # Statistics
 # -------------------------------------------------------------------------------------------------
 """ Descriptive statistics for a cohort's measures
-      stat_values[institution][admit_term][measure].n = 12345, etc
+      stat_values[institution][admit_term][event_pair].n = 12345, etc
 """
 
 
@@ -247,6 +247,12 @@ try:
 except ValueError as ve:
   sys.exit(f'“{args.admit_term}” is not a valid CUNY term')
 
+# Senior colleges for "super cohort"
+senior_colleges = ['BAR', 'BKL', 'CTY', 'HTR', 'JJC', 'LEH', 'QNS', 'SLU', 'SPS', 'YRK']
+# Meaningful name for super_cohort colleges, with redundancies removed
+super_cohort = ''.join([sc[0] for sc in senior_colleges]).replace('BB', 'B').replace('SS', 'S')
+
+# Institutions to show, in left to right order (from command line)
 institutions = [i.strip('01').upper() for i in args.institutions]
 for institution in institutions:
   if institution not in institution_names.keys():
@@ -284,18 +290,26 @@ cohort_report = open('./cohort_report.txt', 'w')
 #                           87654321: {appl: 2020-11-11, admt: 2020-11-22, wadm: ...},
 #                           ...}
 start_time = time.time()
-num_cohorts = len(admit_terms) * len(institutions)
+num_cohorts = len(admit_terms) * (len(institutions) + 1)
 print(f'Begin Generate Timeline Statistics\n  {len(event_pairs)} Event Pairs\n'
       f'  {len(admit_terms)} terms × {len(institutions)} institutions => {num_cohorts} Cohorts',
       file=sys.stderr)
+
 cohorts = dict()
+super_cohort_deltas = defaultdict(list)
+
 for institution in institutions:
   for admit_term in sorted(admit_terms, key=lambda x: x.term):
-    cohort_key = (institution, admit_term.term)
+
     student_ids = set()
+
+    cohort_key = (institution, admit_term.term)
     cohorts[cohort_key] = defaultdict(events_dict)
 
-    # Get session events for all students in the cohort
+    super_cohort_key = (super_cohort, admit_term.term)
+    cohorts[super_cohort_key] = defaultdict(events_dict)
+
+    # Get session events for the cohort (and super_cohort)
     session = sessions_cache[(institution, admit_term.term)]
 
     # Add the students and their admission events to the cohort
@@ -326,14 +340,19 @@ for institution in institutions:
         event_str = f'{row.program_action}:{row.action_reason}'.strip(':')
         cohorts[cohort_key][int(row.student_id)]['admin'].append(f'{effective_date} '
                                                                  f'{event_str}')
+        cohorts[super_cohort_key][int(row.student_id)]['admin'].append(f'{effective_date} '
+                                                                       f'{event_str}')
         # Any DEIN implies Commit
         cohorts[cohort_key][int(row.student_id)]['commit'] = row.effective_date
+        cohorts[super_cohort_key][int(row.student_id)]['commit'] = row.effective_date
         # DEIN:ENDC and DEIN:DEPO imply Matric
         if event_str in ['DEIN:ENDC', 'DEIN:DEPO']:
           cohorts[cohort_key][int(row.student_id)]['matric'] = row.effective_date
+          cohorts[super_cohort_key][int(row.student_id)]['matric'] = row.effective_date
       else:
         event_type = action_to_event[program_action]
         cohorts[cohort_key][int(row.student_id)][event_type] = effective_date
+        cohorts[super_cohort_key][int(row.student_id)][event_type] = effective_date
 
     print(f'{len(cohorts[cohort_key]):7,} students in {cohort_key} cohort', file=cohort_report)
     assert len(student_ids) == len(cohorts[cohort_key])
@@ -356,9 +375,11 @@ for institution in institutions:
           if cohorts[cohort_key][student_id]['first_eval'] is None \
              or posted_date < cohorts[cohort_key][student_id]['first_eval']:
             cohorts[cohort_key][student_id]['first_eval'] = posted_date
+            cohorts[super_cohort_key][student_id]['first_eval'] = posted_date
           if cohorts[cohort_key][student_id]['latest_eval'] is None \
              or posted_date > cohorts[cohort_key][student_id]['latest_eval']:
             cohorts[cohort_key][student_id]['latest_eval'] = posted_date
+            cohorts[super_cohort_key][student_id]['latest_eval'] = posted_date
 
     # Enrollment dates
     # ---------------------------------------------------------------------------------------------
@@ -374,12 +395,15 @@ for institution in institutions:
         if cohorts[cohort_key][row.student_id]['first_reg'] is None \
            or row.first_date < cohorts[cohort_key][row.student_id]['first_reg']:
           cohorts[cohort_key][row.student_id]['first_reg'] = row.first_date
+          cohorts[super_cohort_key][row.student_id]['first_reg'] = row.first_date
         if cohorts[cohort_key][row.student_id]['latest_reg'] is None \
            or row.last_date > cohorts[cohort_key][row.student_id]['latest_reg']:
           cohorts[cohort_key][row.student_id]['latest_reg'] = row.last_date
+          cohorts[super_cohort_key][row.student_id]['latest_reg'] = row.last_date
 
     # Create a spreadsheet with the cohort's events for debugging/tableauing
     # ---------------------------------------------------------------------------------------------
+    # Super cohort not included here
     with open(f'./timelines/{institution}-{admit_term.term}.csv', 'w') as spreadsheet:
       print('Student ID,', ','.join([f'{event_names[name]}' for name in event_names.keys()]),
             file=spreadsheet)
@@ -392,11 +416,13 @@ for institution in institutions:
           dates += ',' + '; '.join(sorted(cohorts[cohort_key][student_id]['admin']))
         print(f'{student_id}, {dates}', file=spreadsheet)
 
-    # For each measure, generate a Markdown report, and collect stats for the measures spreadsheets
+    # For each measure, generate a Markdown report, and collect stats for the measures workbook
     # ---------------------------------------------------------------------------------------------
     for event_pair in event_pairs:
       s = stat_values[institution][admit_term.term][event_pair]
+
       earlier, later = event_pair
+      super_cohort_event_key = super_cohort_key + (event_pair, )
       with open(f'./reports/{institution}-{admit_term}-{earlier} to {later}.md', 'w') as report:
         print(f'# {institution_names[institution]}: {admit_term}\n\n'
               f'## Days from {event_names[earlier]} to {event_names[later]}\n'
@@ -419,6 +445,8 @@ for institution in institutions:
               exit()
             deltas.append(delta.days)
             frequencies[delta.days] += 1
+            if institution in senior_colleges:
+              super_cohort_deltas[super_cohort_event_key].append(delta.days)
 
         s.n = len(deltas)
         print(f'| N | {s.n}', file=report)
@@ -446,7 +474,31 @@ for institution in institutions:
         else:
           print('### Not enough data.', file=report)
 
+# Calculate statistics for the super cohort.
+for admit_term in admit_terms:
+  for event_pair in event_pairs:
+    s = stat_values[super_cohort][admit_term.term][event_pair]
+
+    earlier, later = event_pair
+    deltas = super_cohort_deltas[(super_cohort, admit_term.term, event_pair)]
+
+    s.n = len(deltas)
+    if len(deltas) > 5:
+      s.mean = statistics.fmean(deltas)
+      s.std_dev = statistics.stdev(deltas)
+      s.median = statistics.median_grouped(deltas)
+      s.mode = statistics.mode(deltas)
+      s.min_val = min(deltas)
+      s.max_val = max(deltas)
+      min_max_str = f'{min(deltas)} : {max(deltas)}'
+      quartile_list = statistics.quantiles(deltas, n=4, method='exclusive')
+      s.q_1 = quartile_list[0]
+      s.q_2 = quartile_list[1]
+      s.q_3 = quartile_list[2]
+      s.siqr = (s.q_3 - s.q_1) / 2.0
+
 end_timelines = time.time()
+
 print(f'That took {min_sec(end_timelines - start_time)}\nGenerate Workbook', file=sys.stderr)
 
 # Generate an Excel workbook
@@ -456,6 +508,7 @@ print(f'That took {min_sec(end_timelines - start_time)}\nGenerate Workbook', fil
 centered = Alignment('center')
 bold = Font(bold=True)
 wb = Workbook()
+institutions.append(super_cohort)
 for event_pair in event_pairs:
   earlier, later = event_pair
   ws = wb.create_sheet(f'{event_names[earlier][0:14]} to {event_names[later][0:14]}')
@@ -500,20 +553,35 @@ for event_pair in event_pairs:
         ws.cell(row, col).number_format = '0'
         ws.cell(row, col).font = bold
 
-    # Mean
-    if 'mean' in stats_to_show:
+    # SIQR
+    if 'siqr' in stats_to_show:
       row += 1
-      ws.cell(row, 1, 'Mean').font = bold
+      ws.cell(row, 1, 'SIQR').font = bold
       values = []
       for institution in institutions:
-        value = stat_values[institution][admit_term.term][event_pair].mean
+        value = stat_values[institution][admit_term.term][event_pair].siqr
         if value is None:
           values.append('')
         else:
           values.append(value)
       for col in range(2, 2 + len(headings) - 1):
         ws.cell(row, col).value = values[col - 2]
-        ws.cell(row, col).number_format = '0'
+        ws.cell(row, col).number_format = '0.1'
+
+    # Std Dev
+    if 'std_dev' in stats_to_show:
+      row += 1
+      ws.cell(row, 1, 'Std Dev').font = bold
+      values = []
+      for institution in institutions:
+        value = stat_values[institution][admit_term.term][event_pair].std_dev
+        if value is None:
+          values.append('')
+        else:
+          values.append(value)
+      for col in range(2, 2 + len(headings) - 1):
+        ws.cell(row, col).value = values[col - 2]
+        ws.cell(row, col).number_format = '0.1'
 
     # Mode
     if 'mode' in stats_to_show:
@@ -522,6 +590,21 @@ for event_pair in event_pairs:
       values = []
       for institution in institutions:
         value = stat_values[institution][admit_term.term][event_pair].mode
+        if value is None:
+          values.append('')
+        else:
+          values.append(value)
+      for col in range(2, 2 + len(headings) - 1):
+        ws.cell(row, col).value = values[col - 2]
+        ws.cell(row, col).number_format = '0'
+
+    # Mean
+    if 'mean' in stats_to_show:
+      row += 1
+      ws.cell(row, 1, 'Mean').font = bold
+      values = []
+      for institution in institutions:
+        value = stat_values[institution][admit_term.term][event_pair].mean
         if value is None:
           values.append('')
         else:
@@ -604,36 +687,6 @@ for event_pair in event_pairs:
       for col in range(2, 2 + len(headings) - 1):
         ws.cell(row, col).value = values[col - 2]
         ws.cell(row, col).number_format = '0.0'
-
-    # SIQR
-    if 'siqr' in stats_to_show:
-      row += 1
-      ws.cell(row, 1, 'SIQR').font = bold
-      values = []
-      for institution in institutions:
-        value = stat_values[institution][admit_term.term][event_pair].siqr
-        if value is None:
-          values.append('')
-        else:
-          values.append(value)
-      for col in range(2, 2 + len(headings) - 1):
-        ws.cell(row, col).value = values[col - 2]
-        ws.cell(row, col).number_format = '0.1'
-
-    # Std Dev
-    if 'std_dev' in stats_to_show:
-      row += 1
-      ws.cell(row, 1, 'Std Dev').font = bold
-      values = []
-      for institution in institutions:
-        value = stat_values[institution][admit_term.term][event_pair].std_dev
-        if value is None:
-          values.append('')
-        else:
-          values.append(value)
-      for col in range(2, 2 + len(headings) - 1):
-        ws.cell(row, col).value = values[col - 2]
-        ws.cell(row, col).number_format = '0.1'
 
     # Empty row between Admit Terms
     row += 1

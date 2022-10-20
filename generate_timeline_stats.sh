@@ -9,13 +9,15 @@ do
     'skip_updates') SKIP_UPDATES=True
                     ;;
      *) echo "Unrecognized argument: $arg"
+        echo "Usage: $0 [skip_updates]"
         exit 1
         ;;
   esac
 done
 
-# Institution order will be preserved in the generated Excel spreadsheet (community colleges first)
-institutions='bcc bmc hos kcc lag qcc bar bkl csi cty htr jjc leh mec nyt qns sps yrk'
+# Institution order will be preserved in the generated Excel spreadsheet (community colleges first,
+# then comprehensives, then seniors)
+institutions='bcc bmc hos kcc lag qcc csi mec nyt bar bkl cty htr jjc leh qns sps yrk'
 
 # Admit terms list should be updated manually as new terms "of interest" become relevant.
 terms='1199 1202 1209 1212 1219 1222 1229 1232'
