@@ -7,13 +7,13 @@
 import argparse
 import csv
 import datetime
+import psycopg
 import resource
 import sys
 
 from collections import namedtuple, defaultdict
 from pathlib import Path
-
-from pgconnection import PgConnection
+from psycopg.rows import namedtuple_row
 
 soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, [0x800, hard])
@@ -24,10 +24,10 @@ parser.add_argument('file', nargs='?')
 args = parser.parse_args()
 progress = not args.no_progress
 
-curric_conn = PgConnection()
-curric_cursor = curric_conn.cursor()
-trans_conn = PgConnection('cuny_transfers')
-trans_cursor = trans_conn.cursor()
+curric_conn = psycopg.connect('dbname=cuny_curriculum')
+curric_cursor = curric_conn.cursor(row_factory=namedtuple_row)
+trans_conn = psycopg.connect('dbname=cuny_transfers')
+trans_cursor = trans_conn.cursor(row_factory=namedtuple_row)
 
 # If a file was specified on the command line, use that. Otherwise use the latest one found in
 # downloads. The idea is to allow history from previous snapshots to be captured during development,
