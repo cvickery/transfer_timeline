@@ -58,6 +58,7 @@ import statistics
 import time
 
 from collections import namedtuple, defaultdict
+from math import sqrt
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 from psycopg.rows import namedtuple_row
@@ -87,7 +88,7 @@ class Stats:
   """
   def __init__(self):
     self.n = self.mean = self.std_dev = self.median = self.mode = self.min_val = self.max_val =\
-        self.q_1 = self.q_2 = self.q_3 = self.siqr = None
+        self.q_1 = self.q_2 = self.q_3 = self.siqr = self.conf_int = None
 
 
 # Factory methods for initializing defaultdicts
@@ -209,9 +210,20 @@ event_type_list = '\n  '.join([t for t in event_types if t != 'wadm'])
 if len(args.event_pairs) < 1:
   exit('No event pairs.')
 
-stats_to_show = [arg.lower() for arg in args.stats]
+all_stats = ['n', 'median', 'mean', 'mode', 'min', 'max', 'q1', 'q2', 'q3', 'siqr', 'std_dev']
+stats_to_show = []
+for arg in args.stats:
+  if arg.lower() in all_stats:
+    stats_to_show.append(arg.lower())
+  elif arg.lower() == 'all':
+    stats_to_show = all_stats
+    break
+  else:
+    print(f'{arg}: valid stat names are “all” or any combination of:', all_stats)
+    exit()
+
 if len(stats_to_show) == 0:
-  exit('No stats')
+  exit('No stats to show')
 
 for arg in args.event_pairs:
   if arg.startswith('#'):
@@ -550,7 +562,7 @@ for event_pair in event_pairs:
           values.append(value)
       for col in range(2, 2 + len(headings) - 1):
         ws.cell(row, col).value = values[col - 2]
-        ws.cell(row, col).number_format = '0'
+        ws.cell(row, col).number_format = '0.0'
         ws.cell(row, col).font = bold
 
     # SIQR
@@ -566,7 +578,22 @@ for event_pair in event_pairs:
           values.append(value)
       for col in range(2, 2 + len(headings) - 1):
         ws.cell(row, col).value = values[col - 2]
-        ws.cell(row, col).number_format = '0.1'
+        ws.cell(row, col).number_format = '0.0'
+
+    # Mean
+    if 'mean' in stats_to_show:
+      row += 1
+      ws.cell(row, 1, 'Mean').font = bold
+      values = []
+      for institution in institutions:
+        value = stat_values[institution][admit_term.term][event_pair].mean
+        if value is None:
+          values.append('')
+        else:
+          values.append(value)
+      for col in range(2, 2 + len(headings) - 1):
+        ws.cell(row, col).value = values[col - 2]
+        ws.cell(row, col).number_format = '0.0'
 
     # Std Dev
     if 'std_dev' in stats_to_show:
@@ -581,7 +608,23 @@ for event_pair in event_pairs:
           values.append(value)
       for col in range(2, 2 + len(headings) - 1):
         ws.cell(row, col).value = values[col - 2]
-        ws.cell(row, col).number_format = '0.1'
+        ws.cell(row, col).number_format = '0.0'
+
+      # 95% Confidence interval (derived from std dev and n); always shown with std_dev
+      row += 1
+      ws.cell(row, 1, '95% Conf').font = bold
+      values = []
+      for institution in institutions:
+        n = stat_values[institution][admit_term.term][event_pair].n
+        std_dev = stat_values[institution][admit_term.term][event_pair].std_dev
+        if n > 0 and std_dev is not None:
+          value = 0.95 * (std_dev / sqrt(n))
+          values.append(value)
+        else:
+          values.append('')
+      for col in range(2, 2 + len(headings) - 1):
+        ws.cell(row, col).value = values[col - 2]
+        ws.cell(row, col).number_format = '0.00'
 
     # Mode
     if 'mode' in stats_to_show:
@@ -590,21 +633,6 @@ for event_pair in event_pairs:
       values = []
       for institution in institutions:
         value = stat_values[institution][admit_term.term][event_pair].mode
-        if value is None:
-          values.append('')
-        else:
-          values.append(value)
-      for col in range(2, 2 + len(headings) - 1):
-        ws.cell(row, col).value = values[col - 2]
-        ws.cell(row, col).number_format = '0'
-
-    # Mean
-    if 'mean' in stats_to_show:
-      row += 1
-      ws.cell(row, 1, 'Mean').font = bold
-      values = []
-      for institution in institutions:
-        value = stat_values[institution][admit_term.term][event_pair].mean
         if value is None:
           values.append('')
         else:

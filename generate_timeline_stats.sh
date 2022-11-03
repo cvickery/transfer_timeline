@@ -65,7 +65,8 @@ event_pairs='apply:admit
              first_eval:census_date
              latest_eval:census_date'
 
-stats='n mean median'
+# Individual stat names: n median mean mode min max q1 q2 q3 siqr std_dev
+stats=all
 
 # Skip table management if testing generator
 if [[ ! $SKIP_UPDATES ]]
