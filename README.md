@@ -20,7 +20,7 @@ The intervals reported by default are defined by the following pairs of events:
 | admit | start open enr | How long after a student applied was it possible for _any_ student to apply |
 | commit | first eval | How long after a student committed until their courses were evaluated^1 |
 | commit | latest eval | How long after a student committed until their latest credit evaluation evaluatedv
-| matric | first eval | How long after a student matriculated until their coursese were evaluated^1 |
+| matric | first eval | How long after a student matriculated until their courses were evaluated^1 |
 | matric | latest eval | How long after a student matriculated until their latest credit re-evaluation |
 | first eval | start open enr | How long after credits were evaluated before registration period started |
 | latest eval | start open enr | How long after most-recent credit evaluated before registration period started |
@@ -31,6 +31,16 @@ The intervals reported by default are defined by the following pairs of events:
 
 1 Should be negative!
 
+## Definitions
+
+### Cohorts
+
+A _cohort_ is a set of students who apply for transfer admission to a college in a given semester, known as the *articulation term*. Not all students who apply go through all the possible steps in the timeline from application to registration for courses at the destination college, so the size of the cohort can vary from step to step in the process. Examples are a student who applies but is not admitted, or who is admitted but doesn't register. But there are cases where a student is simply missing a step in the process; an example being a student who does not make a deposit after being admitted because of an administrative policy that makes this step optional.
+
+### Admit Term
+
+Students are admitted for either the Fall or Spring term, but Fall admits are typically allowed to register for courses during the summer prior to their admit term. This can skew the data for intervals that end with the dates when the student registered or started classes.
+
 ## Implementation
 There are two parts: building a local database, then generating reports based on that database.
 
@@ -40,33 +50,27 @@ All data comes from CUNYfirst, the result of running queries manually or on sche
 
 The following information is kept in the local database (names in caps are CUNYfirst query names):
 
-- *Sessions*: (Start Registration, Classes Start) come from SESSION\_TBL, which gives this information
-  for each college for each term.
-- *Admissions*: (Apply, Admit, Commit, Matric), ADM\_MC\_VW, gives this information for
-  each student for each term.
+- *Sessions*: (Start Registration, Classes Start, Census Date) come from SESSION\_TBL, which gives this information for each college for each term.
+- *Admissions*: (Apply, Admit, Commit, Matric), ADM\_MC\_VW, gives this information for each student for each term.
 - *Transfers Applied*: (First Eval, Latest Eval), a query links several tables together:
     - TRNS\_CRSE\_SCH gives the sending college and receiving college for each student.
     - TRNS\_CRSE\_TERM gives the posted date for each evaluation for each articulation term.
     - Other tables give information about the courses that are being transferred.
-- *Registrations* (First Registration, Latest Registration), a view, CU\_STD\_ENRL\_VW, gives
-  the class that each student registers for, for each term.
+- *Registrations* (First Registration, Latest Registration), a view (CU\_STD\_ENRL\_VW) gives the class that each student registers for, for each term.
 
 ### Initial setup
 
 The CUNYfirst query CV\_QNS\_TRNS\_DTL\_SRC\_CLASS\_FULL provides information about transfer
 evaluation events from Summer 2019 to date. _populate\_transfers\_applied.py_ uses that query to
-create and populate the transfers\_applied table in the cuny\_transfers database. Running the query,
-downloading the result to this project’s _downloads_ directory, and running
-_populate\_transfers\_applied.py_ are all done manually.
+create and populate the transfers\_applied table in the cuny\_transfers database. Running the query, downloading the result to this project’s _downloads_ directory, and running
+_populate\_transfers\_applied.py_ are all done manually when a new report is to be generated.
 
 ### Automatic Updates
 
-When a student’s credits are re-evaluated, CUNYfirst overwrites the previous evaluation and does not
-keep a record of the changes. We want that history information, so the query
+When a student’s credits are re-evaluated, CUNYfirst overwrites the previous evaluation and does not keep a record of the changes. We want that history information, so the query
 CV\_QNS\_TRNS\_DTL\_SRC\_CLASS\_ALL is scheduled to run daily on CUNYfirst. A daily _cron_ job on
 babbage.cs.qc.cuny.edu gets that query result from Tumbleweed and moves it into the _downloads_
-directory of this project. Another daily _cron_ job then runs _update\_transfers\_applied.py_ to add
-new (re-)evaluations to the _transfers\_applied_ table.
+directory of this project. Another daily _cron_ job then runs _update\_transfers\_applied.py_ to add new (re-)evaluations to the _transfers\_applied_ table.
 
 ### Managing Other Tables
 
@@ -82,14 +86,6 @@ in the database.
 The script _grouped\_timelines.py_ generates CSV files for student cohorts (College, Term) in a
 format intended to facilitate spot-checking the event data available in the database. It is run
 manually.
-
-### Cohorts
-
-A _cohort_ is a set of students who apply for transfer admission to a college in a given semester, known as the *articulation term*. Not all students who apply go through all the possible steps in the timeline from application to registration for courses at the destination college, so the size of the cohort can vary from step to step in the process. Examples are a student who applies but is not admitted, or who is admitted but doesn't register. But there are cases where a student is simply missing a step in the process; an example being a student who does not make a deposit after being admitted because of an administrative policy that makes this step optional.
-
-### Admit Term
-
-Students are admitted for either the Fall or Spring term, but Fall admits are typically allowed to register for courses during the summer prior to their admit term. This can skew the data for intervals that end with the dates when the student registered or started classes.
 
 ## Report Generation
 
