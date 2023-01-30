@@ -1,13 +1,14 @@
 #! /usr/local/bin/python3
 
-""" Conclusion: yes. one course can transfer as multiple destination courses, and there are two
-    cases where QCC receives two+ bkcr courses for one sending course, but that's not covered by
-    transfer_rules, so they must be overrides. (Pathways RDs)
+""" Experiment: can one course can transfer as multiple destination courses?
+    Conclusion: yes, and there are two cases where QCC receives two+ bkcr courses for one sending
+    course, but that's not covered by transfer_rules, so they must be overrides. (Pathways RDs)
 
     After lunch, look at sending course credits, receiving course credits, and units_taken.
-    Or not. Time to rething transfers_applied schema. It needs to server two purposes: to give
-    posted_date ranges for students and frequency of transfer_rules applied, in particular bkcr
-    ones.
+    Or not.
+
+    Time to rethink transfers_applied schema. It needs to serve two purposes: to give posted_date
+    ranges for students and frequency of transfer_rules applied, in particular bkcr ones.
 """
 
 import argparse
