@@ -38,7 +38,7 @@ if __name__ == '__main__':
       continue
     file_date = date.fromtimestamp(admit_reg_file.stat().st_ctime)
     base_name = admit_reg_file.stem
-    if str(file_date) not in base_name:
+    if not re.search(r'\d{4}-\d{2}-\d{2}', base_name):
       new_name = f'{base_name}_{file_date}.csv'
       new_file = Path(archive_dir, new_name)
       new_file.write_bytes(admit_reg_file.read_bytes())
