@@ -38,11 +38,14 @@ if __name__ == '__main__':
       continue
     file_date = date.fromtimestamp(admit_reg_file.stat().st_ctime)
     base_name = admit_reg_file.stem
-    if not re.search(r'\d{4}-\d{2}-\d{2}', base_name):
+    # Current query files don’t have numbers in them (CF job-id or date)
+    if not re.search(r'\d+', base_name):
       new_name = f'{base_name}_{file_date}.csv'
       new_file = Path(archive_dir, new_name)
       new_file.write_bytes(admit_reg_file.read_bytes())
       print(f'Copied {file_name} to {archive_dir.name}/{new_name}')
+    else:
+      print(f'Stray file: {admit_reg_dir.name}/{admit_reg_file.name}')
 
   # Download and rename new versions, if possible
   hostname = socket.gethostname()
