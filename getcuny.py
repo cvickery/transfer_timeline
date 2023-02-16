@@ -8,11 +8,16 @@ import sys
 
 from datetime import date
 from pathlib import Path
+from subprocess import run
 
 if __name__ == '__main__':
   hostname = socket.gethostname()
   if not hostname.lower().endswith('.cuny.edu'):
     print(f'Unable to access Tumbleweed from {hostname}')
+  else:
+    print('Download from Tumbleweed')
+    run(['/usr/local/bin/lftp', '-f', './getcunyrc'], stdout=sys.stdout, stderr=sys.stdout)
+
 
   archive_dir = Path('./Admissions_Registrations_Archive')
   admit_reg_dir = Path('Admissions_Registrations')
