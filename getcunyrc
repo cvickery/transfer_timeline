@@ -1,6 +1,6 @@
 open --user CVickery --env-password sftp://st-edge.cuny.edu
 cd ERP_Queens
-mget -O /Users/vickery/Projects/transfers_applied/Admissions_Registrations CV_QNS_ADMISSIONS* \
+mget -O /Users/vickery/Projects/transfer_timeline/Admissions_Registrations CV_QNS_ADMISSIONS* \
                                                                            CV_QNS_STUDENT_SUMMARY* \
                                                                            QNS_CV_SESSION_TABLE* \
                                                                            ADMIT_ACTION_TBL* \
