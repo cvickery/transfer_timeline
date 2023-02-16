@@ -57,7 +57,7 @@ if __name__ == '__main__':
     print('Download from Tumbleweed')
     completed_process = run(['/usr/local/bin/lftp', '-f', './getcunyrc'],
                             stdout=sys.stdout, stderr=sys.stdout)
-    if complted_process.returncode != 0:
+    if completed_process.returncode != 0:
       exit('Download from Tumbleweed FAILED')
 
   for admit_reg_file in admit_reg_dir.glob('*'):
