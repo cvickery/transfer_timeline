@@ -37,11 +37,12 @@ if __name__ == '__main__':
       # Ignore hidden files
       continue
     file_date = date.fromtimestamp(admit_reg_file.stat().st_ctime)
-    base_name = file_name[0:file_name.index('.')]
-    new_name = f'{base_name}_{file_date}.csv'
-    new_file = Path(archive_dir, new_name)
-    new_file.write_bytes(admit_reg_file.read_bytes())
-    print(f'Copied {file_name} to {archive_dir.name}/{new_name}')
+    base_name = admit_reg_file.stem
+    if str(file_date) not in base_name:
+      new_name = f'{base_name}_{file_date}.csv'
+      new_file = Path(archive_dir, new_name)
+      new_file.write_bytes(admit_reg_file.read_bytes())
+      print(f'Copied {file_name} to {archive_dir.name}/{new_name}')
 
   # Download and rename new versions, if possible
   hostname = socket.gethostname()
