@@ -55,14 +55,14 @@ if __name__ == '__main__':
     trex_labs = f'149.4.44.244:{cwd}/Admissions_Registrations/*'
     completed_process = run(['/usr/bin/scp', trex_labs, '.'])
     if completed_process.returncode != 0:
-      exit('Download from T-Rex Labs FAILED')
+      print('Download from T-Rex Labs FAILED', file=sys.stderr)
 
   else:
     print('Download from Tumbleweed')
     completed_process = run(['/usr/local/bin/lftp', '-f', './getcunyrc'],
                             stdout=sys.stdout, stderr=sys.stdout)
     if completed_process.returncode != 0:
-      exit('Download from Tumbleweed FAILED')
+      print('Download from Tumbleweed FAILED', file=sys.stderr)
 
   for admit_reg_file in admit_reg_dir.glob('*'):
     # New files from Tumbleweed have job-id numbers: rename them to just the base_name, thereby
@@ -71,5 +71,7 @@ if __name__ == '__main__':
     if match := re.search(r'(^.*)-\d+.csv', admit_reg_file.name):
       new_name = f'{match[1]}.csv'
       admit_reg_file.rename(f'{admit_reg_dir}/{new_name}')
-      print(f'Renamed {admit_reg_file.name} to {new_name}')
+      print(f'Renamed       : {admit_reg_file.name} to {new_name}')
+    else:
+      print(f'Unchanged name: {admit_reg_file.name}')
 
