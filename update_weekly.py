@@ -67,11 +67,11 @@ if __name__ == '__main__':
   for admit_reg_file in admit_reg_dir.glob('*'):
     # New files from Tumbleweed have job-id numbers: rename them to just the base_name, thereby
     # overwriting the ones that were archived above. Match job numbers (all digits, no hyphens), not
-    # dates (digits and hyphens).
+    # dates (digits and hyphens). (During development there were dated files in admit_reg_dir.)
     if match := re.search(r'(^.*)-\d+.csv', admit_reg_file.name):
       new_name = f'{match[1]}.csv'
       admit_reg_file.rename(f'{admit_reg_dir}/{new_name}')
-      print(f'Renamed       : {admit_reg_file.name} to {new_name}')
+      print(f'  Renamed:        {admit_reg_file.name} to {new_name}')
     else:
-      print(f'Unchanged name: {admit_reg_file.name}')
+      print(f'Unchanged: {admit_reg_file.name}')
 
