@@ -20,7 +20,7 @@ if __name__ == '__main__':
 
 
   archive_dir = Path('./Admissions_Registrations_Archive')
-  admit_reg_dir = Path('Admissions_Registrations')
+  admit_reg_dir = Path('./Admissions_Registrations')
   admit_reg_files = Path(admit_reg_dir).glob('*')
   for admit_reg_file in admit_reg_files:
     file_name = admit_reg_file.name
