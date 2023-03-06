@@ -1,5 +1,5 @@
 #! /usr/local/bin/python3
-""" Generate reports with times between various events for various cohorts.
+"""Generate reports with times between various events for various cohorts.
 
     A cohort consists of all students who apply to transfer to a college for a given term.
 
@@ -165,7 +165,7 @@ missing_date = datetime.date(1901, 1, 1)
 # events_dict()
 # -------------------------------------------------------------------------------------------------
 def events_dict():
-  """ Factory method to produce default dates (None) for a student's events record.
+  """Factory method to produce default dates (None) for a student's events record.
   """
   events = {key: None for key in event_types}
   # Session info is same for all students in cohort, so that is initialized here.
