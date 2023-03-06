@@ -1,3 +1,3 @@
 #! /usr/local/bin/bash
 
-rsync -vte ssh 149.4.44.244:/Users/vickery/Projects/transfers_applied/downloads/CV_QNS_* /Users/vickery/Projects/transfers_applied/downloads
+rsync -vte ssh 149.4.44.244:/Users/vickery/Projects/transfer_timeline/downloads/CV_QNS_* $HOME/Projects/transfer_timeline/downloads
