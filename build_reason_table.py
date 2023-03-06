@@ -9,7 +9,8 @@ from pathlib import Path
 
 from pgconnection import PgConnection
 
-project_dir = Path('/Users/vickery/Projects/transfers_applied/')
+home_dir = Path.home()
+project_dir = Path(home_dir, 'Projects/transfers_applied/')
 query_dir = Path(project_dir, 'Admissions_Registrations')
 latest = None
 for file in Path(query_dir).glob(f'PROG_REASON*'):
