@@ -1,4 +1,5 @@
 #! /usr/local/bin/python3
+"""Verify that query files are up to date."""
 
 import os
 import sys
@@ -17,7 +18,8 @@ from timeline_utils import min_sec
 # Report the ages of the queries used to build baseline tables
 queries = ['CV_QNS_ADMISSIONS', 'CV_QNS_STUDENT_SUMMARY',
            'ADMIT_ACTION_TBL', 'ADMIT_TYPE_TBL', 'PROG_REASON_TBL']
-project_dir = Path('/Users/vickery/Projects/transfer_timeline/')
+home_dir = Path.home()
+project_dir = Path(home_dir, 'Projects/transfer_timeline/')
 query_dir = Path(project_dir, 'Admissions_Registrations')
 today = datetime.today().timestamp()
 sec_per_day = 3600 * 24
