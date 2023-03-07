@@ -21,7 +21,6 @@ from argparse import ArgumentParser
 from datetime import date
 from pathlib import Path
 from subprocess import run
-from thin import thin
 
 if __name__ == '__main__':
 
@@ -87,10 +86,3 @@ if __name__ == '__main__':
           print(f'  Renamed:        {admit_reg_file.name} to {new_name}')
         else:
           print(f'Unchanged: {admit_reg_file.name}')
-
-  # Prune the Archive directory
-  max_archive_size_units = 'GB'
-  num_archive_size_units = 20
-  max_archive_size = num_archive_size_units * pow(2, 30)
-  print(f'Pruning {archive_dir} to {num_archive_size_units:,}{max_archive_size_units}')
-  thin(str(archive_dir), max_archive_size, only_suffixes=['csv'])
