@@ -17,7 +17,6 @@ import csv
 import psycopg
 
 from collections import namedtuple
-from datetime import date
 from psycopg.rows import namedtuple_row
 
 with psycopg.connect('dbname=cuny_transfers') as conn:
@@ -29,17 +28,22 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
     institution           text,
     term                  integer,
     session               text,
-    early_enrollment      date,
-    open_enrollment       date,
-    last_enrollment       date,
-    classes_start         date,
-    census_date           date,
-    classes_end           date,
+    early_enrollment      date default null,
+    open_enrollment       date default null,
+    last_enrollment       date default null,
+    classes_start         date default null,
+    census_date           date default null,
+    classes_end           date default null,
     primary key (institution, term, session)
     )
     """)
-
-    missing_date = date.fromisoformat('1901-01-01')
+    csv_to_db = {'first_date_to_enroll': 'early_enrollment',
+                 'open_enrollment_date': 'open_enrollment',
+                 'last_date_to_enroll': 'last_enrollment',
+                 'session_beginning_date': 'classes_start',
+                 'census_date': 'census_date',
+                 'session_end_date': 'classes_end'
+                 }
     with open('./queries/QNS_CV_SESSION_TABLE.csv') as sess:
       reader = csv.reader(sess)
       for line in reader:
@@ -50,13 +54,20 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
           for index, value in enumerate(line):
             row[cols[index]] = value
           if row['career'].startswith('U'):
-            # Convert missing dates to 1/1/1901
+            column_names = ['institution', 'term', 'session']
+            placeholders = '%s, %s, %s'
+            values = [row['institution'], row['term'], row['session']]
+            # Handle missing dates
             for field in ['first_date_to_enroll', 'open_enrollment_date', 'last_date_to_enroll',
                           'session_beginning_date', 'census_date', 'session_end_date']:
-                row[field] = row[field] if row[field] else missing_date
-
-            cursor.execute("""
-            insert into sessions values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (row['institution'], row['term'], row['session'], row['first_date_to_enroll'],
-                  row['open_enrollment_date'], row['last_date_to_enroll'],
-                  row['session_beginning_date'], row['census_date'], row['session_end_date']))
+                if row[field]:
+                  column_names.append(csv_to_db[field])
+                  placeholders += ', %s'
+                  values.append(row[field])
+            column_names = ', '.join(column_names)
+            cursor.execute(f"""
+            insert into sessions ({column_names}) values ({placeholders})
+            """, values)
+            # (row['institution'], row['term'], row['session'], row['first_date_to_enroll'],
+            #       row['open_enrollment_date'], row['last_date_to_enroll'],
+            #       row['session_beginning_date'], row['census_date'], row['session_end_date']))
