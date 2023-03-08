@@ -4,7 +4,10 @@
 import csv
 import psycopg
 
+from datetime import datetime
 from psycopg.rows import namedtuple_row
+
+start_time = datetime.now()
 
 # More meaningful column names
 csv_to_db = {'id': 'student_id',
@@ -34,11 +37,12 @@ csv_to_db = {'id': 'student_id',
              'external_application': 'external_application'
              }
 
+# Create the table
 with psycopg.connect('dbname=cuny_transfers') as conn:
   with conn.cursor(row_factory=namedtuple_row) as cursor:
     cursor.execute("""
-    drop table if exists transfer_admissions;
-    create table transfer_admissions (
+    drop table if exists admissions;
+    create table admissions (
       student_id              integer,
       career                  text,
       application_number      integer,
@@ -68,13 +72,16 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
     )
     """)
 
+    # Populate the table
     with open('./queries/CV_QNS_ADMISSIONS.csv') as csv_file:
+      row_count = 0
       reader = csv.reader(csv_file)
       for line in reader:
         if reader.line_num == 1:
           cols = [col.lower().replace(' ', '_') for col in line]
           admit_type_index = cols.index('admit_type')
         else:
+          print(f'\r{reader.line_num:,}', end='')
           if line[admit_type_index] in ['TRD', 'TRN']:
             # Build the row to insert, omitting missing dates and integers
             placeholders = ''
@@ -97,5 +104,8 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
                   pass
             placeholders = placeholders.strip(', ')
             column_names = ', '.join(column_names)
-            cursor.execute(f'insert into transfer_admissions'
+            row_count += 1
+            cursor.execute(f'insert into admissions'
                            f'({column_names}) values ({placeholders})', column_values)
+
+print(f'\n{row_count:,} rows\n{(datetime.now() - start_time).seconds} seconds')
