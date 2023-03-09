@@ -1,7 +1,8 @@
 #! /usr/local/bin/python3
-""" Add new rows to transfers_applied.
-    Using query data that covers the past week, so skip rows that already exist. Keep a record of
-    all primary keys to avoid inserts that will fail.
+"""Add new rows to transfers_applied.
+
+Using query data that covers the past week, so skip rows that already exist.
+  Keep a record of all primary keys to avoid inserts that will fail.
 """
 
 import argparse
