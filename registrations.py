@@ -1,0 +1,113 @@
+#! /usr/local/bin/python3
+"""Build the registrations table."""
+
+import csv
+import psycopg
+
+from collections import namedtuple
+from datetime import datetime
+from psycopg.rows import dict_row
+
+start_time = datetime.now()
+
+# Set up registrations column names
+csv_to_db = {'id': 'student_id',
+             # 'career': 'career',
+             'institution': 'institution',
+             'term': 'term',
+             'session': 'session',
+             # 'student_enrollment_status': 'enrollment_status',
+             # 'enrollment_status_reason': 'enrollment_reason',
+             # 'last_enrollment_action': 'last_enrollment_action',
+             'enrollment_add_date': 'add_date',
+             'enrollment_drop_date': 'drop_date',
+             # 'rd_option': 'requirement_designation',
+             # 'academic_group': 'academic_group',
+             # 'last_enrollment_action_process': 'process_code'
+             }
+
+# Create the table
+with psycopg.connect('dbname=cuny_transfers') as conn:
+  with conn.cursor() as cursor:
+    cursor.execute("""
+    drop table if exists registrations;
+    create table registrations (
+    student_id                  integer,
+    -- career                   text,
+    institution                 text,
+    term                        integer,
+    session                     text,
+    -- enrollment_status        text,
+    -- enrollment_reason        text,
+    -- last_enrollment_action   text,
+    registration_date           date default null,
+    add_drop                    text
+    -- requirement_designation  text,
+    -- academic_group           text,
+    -- process_code             text
+    )
+    """)
+
+    # Populate the table
+    # One row per (student, institution, term, session) for each registraton date and add/drop
+    # indicator.
+    with open('queries/sorted_registrations.csv') as csv_file:
+
+      counter = 0
+      this_record_key = None
+      registrations = None
+
+      reader = csv.reader(csv_file)
+      for line in reader:
+        if reader.line_num == 1:
+          cols = [col.lower().replace(' ', '_').replace('-', '_') for col in line]
+          Row = namedtuple('Row', cols)
+        else:
+          print(f'\r{reader.line_num:,}', end='')
+          row = Row._make(line)
+          if row.career.startswith('U'):
+            counter += 1
+
+            student_id = int(row.id)
+            institution = row.institution
+            term = row.term
+            session = row.session
+
+            if this_record_key is None:
+              this_record_key = (student_id, institution, term, session)
+              registrations = set()
+
+            if (new_record_key := (student_id, institution, term, session)) != this_record_key:
+              # Add row to the database
+              for registration in sorted(registrations):
+                cursor.execute("""
+                insert into registrations values (%s, %s, %s, %s, %s, %s)
+                """, (this_record_key) + (registration))
+
+              # Start new row
+              this_record_key = new_record_key
+              registrations = set()  # of (date, add/drop) tuples
+
+            else:
+              if add_date := row.enrollment_add_date:
+                registrations.add((datetime.strptime(add_date, '%m/%d/%Y'), 'add'))
+              if drop_date := row.enrollment_drop_date:
+                registrations.add((datetime.strptime(drop_date, '%m/%d/%Y'), 'drop'))
+
+            # placeholders = ''
+            # column_names = []
+            # column_values = []
+            # for line_key, row_key in csv_to_db.items():
+            #   if row_key.endswith('_date') and not line[cols.index(line_key)]:
+            #     continue
+            #   placeholders += ',%s '
+            #   column_names.append(row_key)
+            #   column_values.append(line[cols.index(line_key)])
+
+            # placeholders = placeholders.strip(', ')
+            # column_names = ', '.join(column_names)
+            # cursor.execute(f"""
+            # insert into registrations ({column_names}) values ({placeholders})
+            # """, column_values)
+
+print(f'\n{(datetime.now() - start_time).seconds} seconds\n{counter:,} records')
