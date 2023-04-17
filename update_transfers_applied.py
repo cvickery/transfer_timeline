@@ -70,11 +70,12 @@ num_skipped = 0
 max_new_post = None
 
 cols = ['student_id', 'src_institution', 'enrollment_term', 'enrollment_session',
-        'articulation_term', 'model_status', 'model_nbr', 'posted_date', 'src_subject',
-        'src_catalog_nbr', 'src_designation', 'src_grade', 'src_gpa', 'src_course_id',
-        'src_offer_nbr', 'src_is_repeatable', 'src_description', 'academic_program', 'units_taken',
-        'dst_institution', 'dst_designation', 'dst_course_id', 'dst_offer_nbr', 'dst_subject',
-        'dst_catalog_nbr', 'dst_grade', 'dst_gpa', 'dst_is_message', 'dst_is_blanket']
+        'articulation_term', 'model_status', 'model_nbr', 'posted_date',
+        'src_subject', 'src_catalog_nbr', 'src_designation', 'src_grade', 'src_gpa',
+        'src_course_id', 'src_offer_nbr', 'src_is_repeatable', 'src_description',
+        'academic_program', 'units_taken', 'dst_institution', 'dst_designation', 'dst_course_id',
+        'dst_offer_nbr', 'dst_subject', 'dst_catalog_nbr', 'dst_grade', 'dst_gpa', 'dst_is_message',
+        'dst_is_blanket', 'credit_source_type']
 placeholders = ((len(cols)) * '%s,').strip(', ')
 cols = ','.join(cols)
 
@@ -131,7 +132,8 @@ with open(f'./Logs/update_{file_date.isoformat()}.log', 'w') as logfile:
                        row.src_offer_nbr, src_is_repeatable, row.src_description,
                        row.academic_program, row.units_taken, row.dst_institution,
                        row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
-                       dst_catalog_nbr, row.dst_grade, row.dst_gpa, dst_is_message, dst_is_blanket)
+                       dst_catalog_nbr, row.dst_grade, row.dst_gpa, dst_is_message, dst_is_blanket,
+                       row.credit_source_type)
         trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) '
                              f'on conflict do nothing',
                              value_tuple)
