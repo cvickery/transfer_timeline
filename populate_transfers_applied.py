@@ -77,6 +77,7 @@ create table transfers_applied (
   dst_gpa             real not NULL,
   dst_is_message      boolean not NULL,
   dst_is_blanket      boolean not NULL,
+  credit_source_type  text,
 
   primary key (student_id, src_course_id, src_offer_nbr,
                            dst_course_id, dst_offer_nbr,
