@@ -8,13 +8,13 @@
 
 import csv
 import datetime
+import psycopg
 import resource
 import sys
 
 from collections import namedtuple
 from pathlib import Path
-
-from pgconnection import PgConnection
+from psycopg.rows import namedtuple_row
 
 soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, [0x800, hard])
@@ -37,11 +37,11 @@ if input().lower().startswith('p'):
 else:
   sys.exit('Ill-advised consequences averted!')
 
-curric_conn = PgConnection('cuny_curriculum')
-curric_cursor = curric_conn.cursor()
+curric_conn = psycopg.connect('cuny_curriculum')
+curric_cursor = curric_conn.cursor(row_factory=namedtuple_row)
 
-trans_conn = PgConnection('cuny_transfers')
-trans_cursor = trans_conn.cursor()
+trans_conn = psycopg.connect('cuny_transfers')
+trans_cursor = trans_conn.cursor(row_factory=namedtuple_row)
 
 trans_cursor.execute("""
 
