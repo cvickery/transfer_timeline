@@ -119,6 +119,10 @@ with open(f'./Logs/update_{file_date.isoformat()}.log', 'w') as logfile:
         dst_course_id = int(row.dst_course_id)
         dst_offer_nbr = int(row.dst_offer_nbr)
         dst_catalog_nbr = row.dst_catalog_nbr.strip()
+        try:
+          credit_source_type = row.credit_source_type
+        except AttributeError:
+          credit_source_type = ''
 
         # Is the src course is repeatable; is dst course is MESG or BKCR
         src_is_repeatable = (src_course_id, src_offer_nbr) in repeatables
@@ -133,7 +137,7 @@ with open(f'./Logs/update_{file_date.isoformat()}.log', 'w') as logfile:
                        row.academic_program, row.units_taken, row.dst_institution,
                        row.dst_designation, row.dst_course_id, row.dst_offer_nbr, row.dst_subject,
                        dst_catalog_nbr, row.dst_grade, row.dst_gpa, dst_is_message, dst_is_blanket,
-                       row.credit_source_type)
+                       credit_source_type)
         trans_cursor.execute(f'insert into transfers_applied ({cols}) values ({placeholders}) '
                              f'on conflict do nothing',
                              value_tuple)
