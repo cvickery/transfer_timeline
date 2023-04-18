@@ -37,10 +37,10 @@ if input().lower().startswith('p'):
 else:
   sys.exit('Ill-advised consequences averted!')
 
-curric_conn = psycopg.connect('cuny_curriculum')
+curric_conn = psycopg.connect('dbname=cuny_curriculum')
 curric_cursor = curric_conn.cursor(row_factory=namedtuple_row)
 
-trans_conn = psycopg.connect('cuny_transfers')
+trans_conn = psycopg.connect('dbname=cuny_transfers')
 trans_cursor = trans_conn.cursor(row_factory=namedtuple_row)
 
 trans_cursor.execute("""
