@@ -28,10 +28,15 @@ if __name__ == '__main__':
   # For each file in queries, see if there is a newer one that is within 10% of its size.
   queries = queries_dir.glob('*.csv')
   new_queries = download_dir.glob('*.csv')
+
   # Remove CF job IDs, if present
   for new_query in new_queries:
     new_stem = re.sub(r'[\-0-9]+', '', new_query.stem)
     new_query.rename(Path(download_dir, f'{new_stem}.csv'))
+
+  # HTML-ize logging info
+  print('<pre>')
+  # Do each existing query file
   for query in queries:
     query_stats = query.stat()
     new_query = Path(download_dir, query.name)
@@ -52,10 +57,12 @@ if __name__ == '__main__':
           query.rename(Path(archive_dir, f'{new_stem}.csv'))
           # Move download to queries_dir
           if args.log_changes:
-            print(f'Move {queries_dir.name}/{new_query.name} to '
+            print(f'Move {download_dir.name}/{new_query.name} to '
                   f'{queries_dir.name}/{new_query.name}')
           new_query.rename(Path(queries_dir, new_query.name))
         else:
           print(f'{new_query.name} size check FAILED: {query_stats.st_size} :: {new_stats.st_size}')
     else:
       print(f'{new_query.name} download NOT FOUND')
+
+  print('</pre>')
