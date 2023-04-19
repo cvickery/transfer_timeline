@@ -34,8 +34,6 @@ if __name__ == '__main__':
     new_stem = re.sub(r'[\-0-9]+', '', new_query.stem)
     new_query.rename(Path(download_dir, f'{new_stem}.csv'))
 
-  # HTML-ize logging info
-  print('<pre>')
   # Do each existing query file
   for query in queries:
     query_stats = query.stat()
@@ -64,5 +62,3 @@ if __name__ == '__main__':
           print(f'{new_query.name} size check FAILED: {query_stats.st_size} :: {new_stats.st_size}')
     else:
       print(f'{new_query.name} download NOT FOUND')
-
-  print('</pre>')
