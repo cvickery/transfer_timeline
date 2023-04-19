@@ -46,7 +46,7 @@ if __name__ == '__main__':
           if args.verbose:
             print(f'{new_query.name} size is ok')
           # Archive query
-          new_stem = f'{query.stem}.{date.fromtimestamp(query_stats.st_mtime)}'
+          new_stem = f'{date.fromtimestamp(query_stats.st_mtime)}.{query.stem}'
           if args.log_changes:
             print(f'Move {queries_dir.name}/{query.name} to {archive_dir.name}/{new_stem}.csv')
           query.rename(Path(archive_dir, f'{new_stem}.csv'))
