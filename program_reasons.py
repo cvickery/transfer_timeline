@@ -9,9 +9,6 @@ from collections import namedtuple
 from pathlib import Path
 from psycopg.rows import namedtuple_row
 
-home_dir = Path.home()
-project_dir = Path(home_dir, 'Projects/transfer_timeline/')
-query_dir = Path(project_dir, 'queries')
 
 with psycopg.connect('dbname=cuny_transfers') as conn:
   conn.execute("""
@@ -24,7 +21,7 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
     primary key (institution, program_action, action_reason)
     );
     """)
-  with Path(query_dir, 'PROG_REASON_TBL.csv').open() as reason_file:
+  with Path('./queries/PROG_REASON_TBL.csv').open() as reason_file:
     reader = csv.reader(reason_file)
     for line in reader:
       if reader.line_num == 1:

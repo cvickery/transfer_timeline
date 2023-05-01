@@ -73,6 +73,7 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
     """)
 
     # Populate the table
+    total_lines = sum(1 for line in open('./queries/CV_QNS_ADMISSIONS.csv'))
     with open('./queries/CV_QNS_ADMISSIONS.csv') as csv_file:
       row_count = 0
       reader = csv.reader(csv_file)
@@ -81,7 +82,7 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
           cols = [col.lower().replace(' ', '_') for col in line]
           admit_type_index = cols.index('admit_type')
         else:
-          print(f'\r{reader.line_num:,}', end='')
+          print(f'\r{reader.line_num:,}/{total_lines:,}', end='')
           if line[admit_type_index] in ['TRD', 'TRN']:
             # Build the row to insert, omitting missing dates and integers
             placeholders = ''

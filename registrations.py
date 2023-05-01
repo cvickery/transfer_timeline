@@ -51,19 +51,20 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
     # Populate the table
     # One row per (student, institution, term, session) for each registraton date and add/drop
     # indicator.
-    with open('queries/sorted_registrations.csv') as csv_file:
+    total_lines = sum(1 for line in open('queries/CV_QNS_STUDENT_SUMMARY.csv'))
+    with open('queries/CV_QNS_STUDENT_SUMMARY.csv') as csv_file:
+      reader = csv.reader(csv_file)
 
       counter = 0
       this_record_key = None
       registrations = None
 
-      reader = csv.reader(csv_file)
       for line in reader:
         if reader.line_num == 1:
           cols = [col.lower().replace(' ', '_').replace('-', '_') for col in line]
           Row = namedtuple('Row', cols)
         else:
-          print(f'\r{reader.line_num:,}', end='')
+          print(f'\r{reader.line_num:,}/{total_lines:,}', end='')
           row = Row._make(line)
           if row.career.startswith('U'):
             counter += 1

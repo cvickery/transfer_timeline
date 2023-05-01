@@ -1,53 +1,53 @@
 #! /usr/local/bin/python3
 """Generate reports with times between various events for various cohorts.
 
-    A cohort consists of all students who apply to transfer to a college for a given term.
+A cohort consists of all students who apply to transfer to a college for a given term.
 
-    reports/
-      - Markdown report for each measure for each cohort
-      - Spreadsheet for each measure for each report with multiple evaluations/registrations
-        coalesced into single rows
+  reports/
+    - Markdown report for each measure for each cohort
+    - Spreadsheet for each measure for each report with multiple evaluations/registrations
+      coalesced into single rows
 
-    timelines/
-      - Spreadsheet for each cohort showing all measures available per student
+  timelines/
+    - Spreadsheet for each cohort showing all measures available per student
 
-    ./
-      - Baseline_Intervals_yyyy-mm-dd.xlsx Consolidated spreadsheet of statistics for each measure
-        for each cohort.
-      - cohort_report.txt Sizes of cohorts
+  ./
+    - Baseline_Intervals_yyyy-mm-dd.xlsx Consolidated spreadsheet of statistics for each measure
+      for each cohort.
+    - cohort_report.txt Sizes of cohorts
 
-    Event Dates:
-      Session: Early Registration, Open Registration, Classes Start
-      Admissions: Apply, Admit, Matric
-      Registrations: First, Latest
-      Transfers: First, Latest
+  Event Dates:
+    Session: Early Registration, Open Registration, Classes Start
+    Admissions: Apply, Admit, Matric
+    Registrations: First, Latest
+    Transfers: First, Latest
 
-    Algorithm:
-      Get session event dates: these are fixed for all members of the cohort
-      Get all students in the cohort
-      For each student, the articulation term:
-        First transfer fetch
-        Latest transfer fetch
-        First registration
-        Latest registration
+  Algorithm:
+    Get session event dates: these are fixed for all members of the cohort
+    Get all students in the cohort
+    For each student, the articulation term:
+      First transfer fetch
+      Latest transfer fetch
+      First registration
+      Latest registration
 
-    Report, as of report date:
-      Number of admitted; number matriculated
-      Descriptive statistics: mean, std dev, median, mode, range, siqr for the following intervals:
-        Apply to Admit
-        Admit to Matric
-        Matric to First Register
-        Matric to Latest Register
-        Admit to First Fetch
-        Admit to Latest Fetch
-        Matric to First Fetch
-        Matric to Latest Fetch
+  Report, as of report date:
+    Number of admitted; number matriculated
+    Descriptive statistics: mean, std dev, median, mode, range, siqr for the following intervals:
+      Apply to Admit
+      Admit to Matric
+      Matric to First Register
+      Matric to Latest Register
+      Admit to First Fetch
+      Admit to Latest Fetch
+      Matric to First Fetch
+      Matric to Latest Fetch
 
-    Not looked at, but potentially useful info:
-      Students who belong to more than one transfer cohort for a semester. Does transfer fetch
-      timing make them go to another college?
+  Not looked at, but potentially useful info:
+    Students who belong to more than one transfer cohort for a semester. Does transfer fetch
+    timing make them go to another college?
 
-    Interesting to see how the above has evolved as the code below was developed.
+  Interesting to see how the above has evolved as the code below was developed.
 """
 
 import sys
@@ -66,13 +66,15 @@ from timeline_utils import min_sec
 
 
 class AdmitTerm:
-  """ CF term code and semester name
-  """
+  """CF term code and semester name."""
+
   def __init__(self, term_code, semester_name):
+    """Capture the term_code and semester_name."""
     self.term = int(term_code)
     self.name = semester_name
 
   def __repr__(self):
+    """Use the semester name as the representation of the object."""
     return self.name
 
 
@@ -84,23 +86,27 @@ class AdmitTerm:
 
 
 class Stats:
-  """ mean, median, mode, etc.
-  """
+  """Descriptive statistics values (mean, median, mode, etc)."""
+
   def __init__(self):
+    """Initialize as values as None."""
     self.n = self.mean = self.std_dev = self.median = self.mode = self.min_val = self.max_val =\
         self.q_1 = self.q_2 = self.q_3 = self.siqr = self.conf_int = None
 
 
 # Factory methods for initializing defaultdicts
 def institution_factory():
+  """Create a defaultdict of term_factory defaultdicts."""
   return defaultdict(term_factory)
 
 
 def term_factory():
+  """Create a defaultdict of stat_factory objects."""
   return defaultdict(stat_factory)
 
 
 def stat_factory():
+  """Create a Stats object for a term_factory."""
   return Stats()
 
 
@@ -165,24 +171,65 @@ missing_date = datetime.date(1901, 1, 1)
 # events_dict()
 # -------------------------------------------------------------------------------------------------
 def events_dict():
-  """Factory method to produce default dates (None) for a student's events record.
-  """
+  """Produce default dates (None) for a student’s events record."""
   events = {key: None for key in event_types}
-  # Session info is same for all students in cohort, so that is initialized here.
-  events['start_early_enr'] = session.first_date_to_enroll
-  events['start_open_enr'] = session.open_enrollment_date
-  events['start_classes'] = session.session_beginning_date
+
+  # Session info is the same for all students in a cohort, so that is initialized here.
+  events['start_early_enr'] = session.early_enrollment
+  events['start_open_enr'] = session.open_enrollment
+  events['start_classes'] = session.classes_start
   events['census_date'] = session.census_date
   events['admin'] = []   # List of dein/wadm events with their dates
   return events
 
 
+# Available terms and sessions cache
+# -------------------------------------------------------------------------------------------------
+with psycopg.connect('dbname=cuny_transfers') as conn:
+  with conn.cursor(row_factory=namedtuple_row) as cursor:
+    cursor.execute("""select count(*), term
+                        from sessions
+                       where term >=1199
+                         and term::text ~* '[29]$'
+                       group by term
+                       order by term;
+                    """)
+    available_terms = [str(row.term) for row in cursor]
+    cursor.execute("""select *
+                        from sessions
+                       where session='1'
+                         and term >=1199
+                         and term::text ~* '[29]$'
+                       order by institution, term
+                    """)
+    sessions_cache = {(row.institution[0:3], row.term): row for row in cursor}
+
+
 # Validate Command Line
 # -------------------------------------------------------------------------------------------------
 parser = argparse.ArgumentParser('Timelines by Cohort')
-parser.add_argument('-t', '--admit_terms', type=int, nargs='*', default=[])
-parser.add_argument('-i', '--institutions', nargs='*', default=[])
-parser.add_argument('-e', '--event_pairs', nargs='*', default=[])
+parser.add_argument('-t', '--admit_terms', nargs='*', default=available_terms)
+parser.add_argument('-i', '--institutions', nargs='*', default=['bcc', 'bmc', 'hos', 'kcc', 'lag',
+                                                                'qcc', 'csi', 'mec', 'nyt', 'bar',
+                                                                'bkl', 'cty', 'htr', 'jjc', 'leh',
+                                                                'qns', 'sps', 'yrk'])
+parser.add_argument('-e', '--event_pairs', nargs='*', default=['apply:admit',
+                                                               'admit:commit',
+                                                               'commit:matric',
+                                                               'admit:matric',
+                                                               'admit:first_eval',
+                                                               'admit:latest_eval',
+                                                               'admit:start_open_enr',
+                                                               'commit:first_eval',
+                                                               'commit:latest_eval',
+                                                               'matric:first_eval',
+                                                               'matric:latest_eval',
+                                                               'first_eval:start_open_enr',
+                                                               'latest_eval:start_open_enr',
+                                                               'first_eval:start_classes',
+                                                               'latest_eval:start_classes',
+                                                               'first_eval:census_date',
+                                                               'latest_eval:census_date'])
 parser.add_argument('-d', '--debug', action='store_true')
 parser.add_argument('-n', '--event_names', action='store_true')
 parser.add_argument('-s', '--stats', nargs='*', default=['n',
@@ -198,36 +245,25 @@ parser.add_argument('-s', '--stats', nargs='*', default=['n',
                                                          'std_dev'])
 args = parser.parse_args()
 
+# If event names are requested, show the possibilities and exit.
 if args.event_names:
   print(f'            ')
   for k, v in event_definitions.items():
     print(f'{ k:16} {v}')
   exit('')
 
-event_pairs = []
-event_type_list = '\n  '.join([t for t in event_types if t != 'wadm'])
-
-if len(args.event_pairs) < 1:
-  exit('No event pairs.')
-
-all_stats = ['n', 'median', 'mean', 'mode', 'min', 'max', 'q1', 'q2', 'q3', 'siqr', 'std_dev']
-stats_to_show = []
-for arg in args.stats:
-  if arg.lower() in all_stats:
-    stats_to_show.append(arg.lower())
-  elif arg.lower() == 'all':
-    stats_to_show = all_stats
-    break
-  else:
-    print(f'{arg}: valid stat names are “all” or any combination of:', all_stats)
-    exit()
-
-if len(stats_to_show) == 0:
+# Process processing options
+stats_to_show = [stat for stat in args.stats]
+if len(stats_to_show) < 1:
   exit('No stats to show')
 
+if len(args.event_pairs) < 1:
+  exit('No event pairs')
+
+event_type_list = '\n  '.join([t for t in event_types if t != 'wadm'])
+event_pairs = []
+
 for arg in args.event_pairs:
-  if arg.startswith('#'):
-    continue
   try:
     earlier, later = arg.lower().split(':')
     if earlier in event_types and later in event_types:
@@ -235,29 +271,23 @@ for arg in args.event_pairs:
     else:
       raise ValueError('Unrecognized event_pair')
   except ValueError as ve:
-    sys.exit(f'“{arg}” does not match earlier:later event_pair structure.\n'
-             f'Valid event types are:\n  {event_type_list}')
+    exit(f'“{arg}” does not match earlier:later event_pair structure.\n'
+         f'Valid event types are:\n  {event_type_list}')
 
 if len(args.admit_terms) < 1 or len(args.institutions) < 1:
   sys.exit(f'Usage: -t admit_term... -i institution... -e event_pair...')
 
-try:
-  admit_terms = []
-  for admit_term in args.admit_terms:
-    year = 1900 + 100 * int(admit_term / 1000) + int(admit_term / 10) % 100
-    assert year > 1989 and year < 2026, f'Admit Term year ({year}) must be between 1990 and 2025'
-    month = admit_term % 10
-    if month == 2:
-      semester = 'Spring'
-    elif month == 9:
-      semester = 'Fall'
-    else:
-      sys.exit(f'{admit_term}: month ({month}) must be 2 for Spring or 9 for Fall.')
-    semester = f'{semester} {year}'
-    admit_terms.append(AdmitTerm(admit_term, semester))
-
-except ValueError as ve:
-  sys.exit(f'“{args.admit_term}” is not a valid CUNY term')
+admit_terms = []
+for admit_term in args.admit_terms:
+  if admit_term not in available_terms:
+    available_terms_str = ', '.join(available_terms)
+    exit(f'{admit_term} is not one of: {available_terms_str}')
+  admit_term = int(admit_term)
+  year = 1900 + 100 * int(admit_term / 1000) + int(admit_term / 10) % 100
+  month = admit_term % 10
+  semester = 'Spring' if month == 2 else 'Fall'
+  semester = f'{semester} {year}'
+  admit_terms.append(AdmitTerm(admit_term, semester))
 
 # Senior colleges for "super cohort"
 senior_colleges = ['BAR', 'BKL', 'CTY', 'HTR', 'JJC', 'LEH', 'QNS', 'SLU', 'SPS', 'YRK']
@@ -270,18 +300,6 @@ for institution in institutions:
   if institution not in institution_names.keys():
     sys.exit(f'“{institution}” is not a valid CUNY institution')
 institutions_str = ','.join([f"'{institution}01'" for institution in institutions])
-
-# Create sessions cache dict indexed by {institution, term}
-with psycopg.connect('dbname=cuny_curriculum') as conn:
-  with conn.cursor(row_factory=namedtuple_row) as cursor:
-    cursor.execute(f"""
-    select * from cuny_sessions
-    where institution in ({institutions_str})
-      and session = '1'
-    """)
-    sessions_cache = defaultdict()
-    for row in cursor.fetchall():
-      sessions_cache[(row.institution[0:3], row.term)] = row
 
 conn = psycopg.connect('dbname=cuny_transfers')
 cursor = conn.cursor(row_factory=namedtuple_row)
@@ -322,7 +340,12 @@ for institution in institutions:
     cohorts[super_cohort_key] = defaultdict(events_dict)
 
     # Get session events for the cohort (and super_cohort)
-    session = sessions_cache[(institution, admit_term.term)]
+    try:
+      session = sessions_cache[(institution, admit_term.term)]
+    except KeyError:
+      # No session for this admit_term for this institution (yet)
+      print(f'No session for {institution} {admit_term.term}')
+      continue
 
     # Add the students and their admission events to the cohort
     # ---------------------------------------------------------------------------------------------
@@ -337,12 +360,15 @@ for institution in institutions:
       term_clause = f'= {admit_term.term}'
 
     cursor.execute(f"""
-        select student_id, program_action, action_reason, effective_date from admissions
-         where institution = '{institution}'
+        select student_id, program_action, action_reason, effective_date
+          from admissions
+         where institution = '{institution}01'
            and admit_term {term_clause}
            and program_action in ('APPL', 'ADMT', 'DEIN', 'MATR', 'WADM')
            order by effective_date
         """)
+    if args.debug:
+      print(f'{institution} {term_clause} has {cursor.rowcount:,} admission events')
     for row in cursor.fetchall():
       student_ids.add(int(row.student_id))
       # For verificaton, show both commit (DEIN) and academic withdrawal (WADM) events as "Admin"
@@ -393,7 +419,7 @@ for institution in institutions:
             cohorts[cohort_key][student_id]['latest_eval'] = posted_date
             cohorts[super_cohort_key][student_id]['latest_eval'] = posted_date
 
-    # Enrollment dates
+    # Registration dates
     # ---------------------------------------------------------------------------------------------
     if student_id_list != '':
       cursor.execute(f"""
@@ -617,7 +643,7 @@ for event_pair in event_pairs:
       for institution in institutions:
         n = stat_values[institution][admit_term.term][event_pair].n
         std_dev = stat_values[institution][admit_term.term][event_pair].std_dev
-        if n > 0 and std_dev is not None:
+        if n and n > 0 and std_dev is not None:
           value = 0.95 * (std_dev / sqrt(n))
           values.append(value)
         else:
