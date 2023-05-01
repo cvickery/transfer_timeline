@@ -58,6 +58,7 @@ import statistics
 import time
 
 from collections import namedtuple, defaultdict
+from datetime import date
 from math import sqrt
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
@@ -328,8 +329,11 @@ print(f'Begin Generate Timeline Statistics\n  {len(event_pairs)} Event Pairs\n'
 cohorts = dict()
 super_cohort_deltas = defaultdict(list)
 
+cohort_num = 0
 for institution in institutions:
   for admit_term in sorted(admit_terms, key=lambda x: x.term):
+    cohort_num += 1
+    print(f'\rCohort {cohort_num:,}/{num_cohorts:,}', end='')
 
     student_ids = set()
 
@@ -344,7 +348,7 @@ for institution in institutions:
       session = sessions_cache[(institution, admit_term.term)]
     except KeyError:
       # No session for this admit_term for this institution (yet)
-      print(f'No session for {institution} {admit_term.term}')
+      print(f'\nNo session for {institution} {admit_term.term}')
       continue
 
     # Add the students and their admission events to the cohort
@@ -421,25 +425,30 @@ for institution in institutions:
 
     # Registration dates
     # ---------------------------------------------------------------------------------------------
+    # Although we collect drop dates, we report only first and last add dates (for now).
     if student_id_list != '':
       cursor.execute(f"""
-        select student_id, first_date, last_date
-          from registrations
-         where institution ~* '{institution}'
-           and term {term_clause}
-           and student_id in ({student_id_list})
+      select student_id, min(add_date) as first_add,
+                         max(add_date) as last_add,
+                         count(add_date) as num_adds,
+                         min(drop_date) as first_drop,
+                         max(drop_date) as last_drop,
+                         count(drop_date) as num_drops
+      from registrations
+      where institution = '{institution}01'
+      and term {term_clause}
+      and student_id in ({student_id_list})
+      group by institution, student_id
         """)
       for row in cursor.fetchall():
-        if cohorts[cohort_key][row.student_id]['first_reg'] is None \
-           or row.first_date < cohorts[cohort_key][row.student_id]['first_reg']:
-          cohorts[cohort_key][row.student_id]['first_reg'] = row.first_date
-          cohorts[super_cohort_key][row.student_id]['first_reg'] = row.first_date
-        if cohorts[cohort_key][row.student_id]['latest_reg'] is None \
-           or row.last_date > cohorts[cohort_key][row.student_id]['latest_reg']:
-          cohorts[cohort_key][row.student_id]['latest_reg'] = row.last_date
-          cohorts[super_cohort_key][row.student_id]['latest_reg'] = row.last_date
 
-    # Create a spreadsheet with the cohort's events for debugging/tableauing
+        cohorts[cohort_key][row.student_id]['first_reg'] = row.first_add
+        cohorts[super_cohort_key][row.student_id]['first_reg'] = row.first_add
+
+        cohorts[cohort_key][row.student_id]['latest_reg'] = row.last_add
+        cohorts[super_cohort_key][row.student_id]['latest_reg'] = row.last_add
+
+    # Create a spreadsheet with the cohort's events for debugging/tableau-ing/powerbi-ing
     # ---------------------------------------------------------------------------------------------
     # Super cohort not included here
     with open(f'./timelines/{institution}-{admit_term.term}.csv', 'w') as spreadsheet:
@@ -513,6 +522,7 @@ for institution in institutions:
           print('### Not enough data.', file=report)
 
 # Calculate statistics for the super cohort.
+print('\nCalculate Statistics', file=sys.stderr)
 for admit_term in admit_terms:
   for event_pair in event_pairs:
     s = stat_values[super_cohort][admit_term.term][event_pair]
@@ -535,9 +545,7 @@ for admit_term in admit_terms:
       s.q_3 = quartile_list[2]
       s.siqr = (s.q_3 - s.q_1) / 2.0
 
-end_timelines = time.time()
-
-print(f'That took {min_sec(end_timelines - start_time)}\nGenerate Workbook', file=sys.stderr)
+print(f'Generate Workbook', file=sys.stderr)
 
 # Generate an Excel workbook
 # ------------------------------------------------------------------------------------------------
@@ -558,6 +566,11 @@ for event_pair in event_pairs:
     ws.cell(row, col + 1, headings[col]).alignment = centered
 
   for admit_term in admit_terms:
+
+    # Skip terms for which there are no data yet (i.e., super cohort N is zero)
+    if 0 == stat_values[institutions[-1]][admit_term.term][event_pair].n:
+      continue
+
     row += 1
     ws.cell(row, 2, str(admit_term))
     ws.merge_cells(start_row=row, end_row=row, start_column=2, end_column=len(headings))
@@ -747,7 +760,6 @@ for event_pair in event_pairs:
     ws.merge_cells(start_row=row, end_row=row, start_column=1, end_column=len(headings))
 
 del wb['Sheet']
-wb.save('./debug.xlsx')
-end_time = time.time()
-print(f'That took {min_sec(end_time - end_timelines)}\n'
-      f'Generate Timeline Statistics took {min_sec(end_time - start_time)}')
+wb.save(f'./{date.today()}.xlsx')
+
+print(f'Total Time {min_sec(time.time() - start_time)}')
