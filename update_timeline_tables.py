@@ -4,9 +4,12 @@
 import psycopg
 import sys
 
+from datetime import date
 from pathlib import Path
 from psycopg.rows import namedtuple_row
 from subprocess import run
+from time import time
+from timeline_utils import min_sec
 
 # Queries and the scripts to rebuild their tables.
 initializers = {
@@ -19,10 +22,19 @@ initializers = {
 }
 
 if __name__ == '__main__':
-  """Verify that the queries and their corresponding initializers are valid"""
+  start_time = time()
+  """Verify that the queries and their corresponding initializers are available and that the query
+     files all have the same date.
+  """
+  query_date = None
   for query, initializer in initializers.items():
     query_file = Path(f'./queries/{query}')
     assert query_file.is_file(), f'{query_file} not found'
+    if query_date is None:
+      query_date = date.fromtimestamp(query_file.stat().st_ctime)
+    else:
+      if query_date != date.fromtimestamp(query_file.stat().st_ctime):
+        exit(f'{query_file} has wrong date ({date.fromtimestamp(query_file.stat().st_ctime)})')
     initializer_script = Path(f'./{initializer}')
     assert initializer_script.is_file(), f'{initializer_script} not found'
 
@@ -30,3 +42,5 @@ if __name__ == '__main__':
   for query, initializer in initializers.items():
     print(f'{initializer:20}  {query}')
     run(initializer)
+
+  print(f'Total time: {min_sec(time() - start_time)}')
