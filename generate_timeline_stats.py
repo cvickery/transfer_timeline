@@ -62,6 +62,7 @@ from datetime import date
 from math import sqrt
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
+from pathlib import Path
 from psycopg.rows import namedtuple_row
 from timeline_utils import min_sec
 
@@ -549,11 +550,14 @@ for admit_term in admit_terms:
 # Write statistics to db
 # ------------------------------------------------------------------------------------------------
 print('Write statistics to db')
+
+# All query files should have the same date (via check_queries.py), so get it for student_summary
+files_date = date.fromtimestamp(Path('./queries/CV_QNS_STUDENT_SUMMARY.csv').stat().st_ctime)
 with psycopg.connect('dbname=cuny_transfers') as conn:
   with conn.cursor() as cursor:
     cursor.execute('delete from statistics')
-    cursor.execute('delete from statistics_date')
-    cursor.execute('insert into statistics_date values(%s)', (date.today(), ))
+    cursor.execute('delete from statistics_dates')
+    cursor.execute('insert into statistics_dates values(%s, %s)', (files_date, date.today()))
     for event_pair in event_pairs:
       for admit_term in admit_terms:
         if 0 == stat_values[super_cohort][admit_term.term][event_pair].n:

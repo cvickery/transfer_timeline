@@ -1,8 +1,8 @@
 -- Create tables for timeline statistics and latest run date.
 
-drop table if exists statistics, statistics_date;
+drop table if exists statistics, statistics_dates;
 
-create table statistics_date (run_date date);
+create table statistics_date (files_date date, run_date date);
 create table statistics (
   institution text,
   admit_term  integer,
