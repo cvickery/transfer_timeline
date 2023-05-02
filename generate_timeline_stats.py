@@ -545,10 +545,51 @@ for admit_term in admit_terms:
       s.q_3 = quartile_list[2]
       s.siqr = (s.q_3 - s.q_1) / 2.0
 
-print(f'Generate Workbook', file=sys.stderr)
 
-# Generate an Excel workbook
+# Write statistics to db
 # ------------------------------------------------------------------------------------------------
+print('Write statistics to db')
+with psycopg.connect('dbname=cuny_transfers') as conn:
+  with conn.cursor() as cursor:
+    cursor.execute('delete from statistics')
+    cursor.execute('delete from statistics_date')
+    cursor.execute('insert into statistics_date values(%s)', (date.today(), ))
+    for event_pair in event_pairs:
+      for admit_term in admit_terms:
+        if 0 == stat_values[super_cohort][admit_term.term][event_pair].n:
+          # Skip terms where there is no data yet
+          continue
+        for institution in institutions:
+          values = [institution, admit_term.term, event_pair]
+
+          n = stat_values[institution][admit_term.term][event_pair].n
+          std_dev = stat_values[institution][admit_term.term][event_pair].std_dev
+          if n > 0 and std_dev is not None:
+            conf_95 = 0.95 * (std_dev / sqrt(n))
+          else:
+            conf_95 = None
+
+          values.append(n)
+          values.append(stat_values[institution][admit_term.term][event_pair].median)
+          values.append(stat_values[institution][admit_term.term][event_pair].siqr)
+          values.append(stat_values[institution][admit_term.term][event_pair].mean)
+          values.append(std_dev)
+          values.append(conf_95)
+          values.append(stat_values[institution][admit_term.term][event_pair].mode)
+          values.append(stat_values[institution][admit_term.term][event_pair].min_val)
+          values.append(stat_values[institution][admit_term.term][event_pair].max_val)
+          values.append(stat_values[institution][admit_term.term][event_pair].q_1)
+          values.append(stat_values[institution][admit_term.term][event_pair].q_2)
+          values.append(stat_values[institution][admit_term.term][event_pair].q_3)
+
+          cursor.execute("""
+          insert into statistics
+                 values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""", values)
+
+
+# Generate Excel workbook
+# ------------------------------------------------------------------------------------------------
+print(f'Generate Workbook', file=sys.stderr)
 """ One sheet for each measure; colleges by columns; rows are statistics for admit term
 """
 centered = Alignment('center')
@@ -585,8 +626,8 @@ for event_pair in event_pairs:
     for col in range(2, 2 + len(headings) - 1):
       ws.cell(row, col).value = values[col - 2]
 
-    # The remainder is messy because there will be None values where N < 6 for some institution, and
-    # because different statistics have different formatting rules
+    # The remainder is messy because there will be None values where N < 6 for some institution,
+    # and because different statistics have different formatting rules
 
     # Median
     if 'median' in stats_to_show:
