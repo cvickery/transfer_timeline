@@ -16,7 +16,8 @@ print('latest query set date is', date.fromtimestamp(latest))
 latest_date = date.fromtimestamp(latest)
 for victim in archive_dir.glob('*.csv'):
   if (diff := (latest_date - date.fromtimestamp(victim.stat().st_mtime)).days) > 0:
-    print(f'{victim.name:40} was {diff:3} days older than {latest_date}')
+    s = 's' if diff != 1 else ''
+    print(f'{victim.name:40} was {diff:3} day{s} older than {latest_date}')
     victim.unlink()
   else:
     print(f'{victim.name:40} LIVES')
