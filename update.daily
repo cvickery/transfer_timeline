@@ -1,14 +1,21 @@
 #! /usr/local/bin/bash
 # cron job to run daily
 
+# May be run from babbage, trexlabs, or some other machine.
+
 # set -x
 
 # timestamp the log file
 echo -e '\n*** ' `date`
-# If not on babbage, sync downloads with babbage.
-if [[ `hostname` != babbage.cs.qc.cuny.edu ]]
-then ./sync
-fi
+
+case `hostname` in
+  babbage.cs.qc.cuny.edu) :
+                          ;;
+  trexlabs.lehman.edu)    :
+                          ;;
+  *)                      ./sync
+                          ;;
+esac
 
 # Update from the latest download
 ./update_transfers_applied.py --no_progress
