@@ -64,6 +64,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 from pathlib import Path
 from psycopg.rows import namedtuple_row
+from subprocess import run
 from timeline_utils import min_sec
 
 
@@ -253,6 +254,11 @@ if args.event_names:
   for k, v in event_definitions.items():
     print(f'{ k:16} {v}')
   exit('')
+
+# Be sure queries/ file set is consistent
+is_copacetic = run(['./check_queries.py', '-nop'])
+if is_copacetic.returncode:
+  exit(f'Query check failed')
 
 # Process processing options
 stats_to_show = [stat for stat in args.stats]
