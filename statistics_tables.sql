@@ -2,7 +2,7 @@
 
 drop table if exists statistics, statistics_dates;
 
-create table statistics_date (files_date date, run_date date);
+create table statistics_dates (files_date date, run_date date);
 create table statistics (
   institution text,
   admit_term  integer,
