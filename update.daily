@@ -25,7 +25,7 @@ esac
 ./update_transfers_applied.py --no_progress
 
 # Validate query_downloads
-./check_queries.py > /dev/null
+./check_queries.py -l
 if [[ $? == 0 ]]
 then prune_queries.py
 fi
