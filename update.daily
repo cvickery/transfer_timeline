@@ -13,7 +13,7 @@ case `hostname` in
   babbage.cs.qc.cuny.edu) :
                           ;;
 
-  trexlabs.lehman.edu)    :
+  trexlabs)               :
                           ;;
 
   *)                      echo Sync `hostname` from babbage
