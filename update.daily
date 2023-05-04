@@ -9,13 +9,23 @@
 echo -e '\n*** ' `date`
 
 case `hostname` in
+
   babbage.cs.qc.cuny.edu) :
                           ;;
+
   trexlabs.lehman.edu)    :
                           ;;
-  *)                      ./sync
+
+  *)                      echo Sync `hostname` from babbage
+                          ./sync > /dev/null
                           ;;
 esac
 
 # Update from the latest download
 ./update_transfers_applied.py --no_progress
+
+# Validate query_downloads
+./check_queries.py > /dev/null
+if [[ $? == 0 ]]
+then prune_queries.py
+fi

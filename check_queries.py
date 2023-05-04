@@ -82,7 +82,7 @@ if __name__ == '__main__':
         print(f'{new_query.name} download NOT FOUND', file=sys.stderr)
 
   if not is_copacetic:
-    exit('Query precheck failed.')
+    exit('Query Download, Size, and/or Age Checks failed.')
 
   # Postcheck: be sure all the queries/ files are all dated the same
   reference_date = None
@@ -98,7 +98,7 @@ if __name__ == '__main__':
         is_copacetic = False
 
   if is_copacetic:
-    print('Archive not trimmed yet', file=sys.stderr)
+    print('Queries dates match')
     exit()
   else:
-    exit(f'Query dates don’t match.')
+    exit(f'Query dates DON’T match.')
