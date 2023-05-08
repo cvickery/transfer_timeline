@@ -27,5 +27,17 @@ esac
 # Validate query_downloads
 ./check_queries.py -l
 if [[ $? == 0 ]]
-then prune_queries.py
+then 
+  echo Prune Queries
+  prune_queries.py
+  if [[ $? == 0 ]]
+  then
+    echo Update Tables
+    update_timeline_tables.py
+    if [[ $? == 0 ]]
+    then
+      echo Generate Statistics
+      generate_timeline_statistics.py
+    fi
+  fi
 fi
