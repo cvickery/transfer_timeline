@@ -28,16 +28,11 @@ esac
 ./check_queries.py -l
 if [[ $? == 0 ]]
 then 
-  echo Prune Queries
-  prune_queries.py
+  echo Update Tables
+  update_timeline_tables.py
   if [[ $? == 0 ]]
   then
-    echo Update Tables
-    update_timeline_tables.py
-    if [[ $? == 0 ]]
-    then
-      echo Generate Statistics
-      generate_timeline_statistics.py
-    fi
+    echo Generate Timeline Statistics
+    generate_timeline_statistics.py -nop
   fi
 fi

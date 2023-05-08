@@ -3,11 +3,13 @@
 
 import csv
 import psycopg
+import sys
 
 from collections import namedtuple
 from datetime import datetime
 from psycopg.rows import dict_row
 
+show_progress = len(sys.argv) > 1
 start_time = datetime.now()
 
 # Set up registrations column names
@@ -64,7 +66,8 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
           cols = [col.lower().replace(' ', '_').replace('-', '_') for col in line]
           Row = namedtuple('Row', cols)
         else:
-          print(f'\r{reader.line_num:,}/{total_lines:,}', end='')
+          if show_progress:
+            print(f'\r{reader.line_num:,}/{total_lines:,}', end='')
           row = Row._make(line)
           if row.career.startswith('U'):
             counter += 1

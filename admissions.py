@@ -3,10 +3,12 @@
 
 import csv
 import psycopg
+import sys
 
 from datetime import datetime
 from psycopg.rows import namedtuple_row
 
+show_progress = len(sys.argv) > 1
 start_time = datetime.now()
 
 # More meaningful column names
@@ -82,7 +84,8 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
           cols = [col.lower().replace(' ', '_') for col in line]
           admit_type_index = cols.index('admit_type')
         else:
-          print(f'\r{reader.line_num:,}/{total_lines:,}', end='')
+          if show_progress:
+            print(f'\r{reader.line_num:,}/{total_lines:,}', end='')
           if line[admit_type_index] in ['TRD', 'TRN']:
             # Build the row to insert, omitting missing dates and integers
             placeholders = ''

@@ -246,7 +246,10 @@ parser.add_argument('-s', '--stats', nargs='*', default=['n',
                                                          'q3',
                                                          'siqr',
                                                          'std_dev'])
+parser.add_argument('-nop', '--no_progress', action='store_true')
 args = parser.parse_args()
+
+show_progress = not args.no_progress
 
 # If event names are requested, show the possibilities and exit.
 if args.event_names:
@@ -340,7 +343,8 @@ cohort_num = 0
 for institution in institutions:
   for admit_term in sorted(admit_terms, key=lambda x: x.term):
     cohort_num += 1
-    print(f'\rCohort {cohort_num:,}/{num_cohorts:,}', end='')
+    if show_progress:
+      print(f'\rCohort {cohort_num:,}/{num_cohorts:,}', end='')
 
     student_ids = set()
 

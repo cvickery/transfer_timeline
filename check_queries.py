@@ -98,7 +98,14 @@ if __name__ == '__main__':
         is_copacetic = False
 
   if is_copacetic:
-    print('Query dates match.')
+    print('Query dates match\n  prune archive')
+    today = date.today()
+    for file in archive_dir.glob('*csv'):
+      age = (today - date.fromtimestamp(file.stat().st_ctime)).days
+      if age > 1:
+        file.unlink()
+        print(f'  {file.name} deleted')
+    print('  done')
     exit()
   else:
     exit(f'Query dates DON’T match.')
