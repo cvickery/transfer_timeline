@@ -98,7 +98,7 @@ if __name__ == '__main__':
         is_copacetic = False
 
   if is_copacetic:
-    print('Queries dates match')
+    print('Query dates match.')
     exit()
   else:
     exit(f'Query dates DON’T match.')
