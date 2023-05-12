@@ -147,7 +147,7 @@ event_names = {'apply': 'Apply',
                }
 
 event_definitions = {'EVENT NAME': 'DEFINITION (command line code)',
-                     'Apply': 'Student filed transfer application (apply)',
+                     'Apply': 'Student submitted transfer application (apply)',
                      'Admit': 'College admitted student (admit)',
                      'Commit': 'Student committed to attend (commit)',
                      'Matric': 'Student matriculated (matric)',
@@ -389,6 +389,7 @@ for institution in institutions:
       # For verificaton, show both commit (DEIN) and academic withdrawal (WADM) events as "Admin"
       program_action = row.program_action.lower()
       effective_date = row.effective_date
+
       if program_action in ['wadm', 'dein']:
         event_str = f'{row.program_action}:{row.action_reason}'.strip(':')
         cohorts[cohort_key][int(row.student_id)]['admin'].append(f'{effective_date} '
@@ -402,6 +403,7 @@ for institution in institutions:
         if event_str in ['DEIN:ENDC', 'DEIN:DEPO']:
           cohorts[cohort_key][int(row.student_id)]['matric'] = row.effective_date
           cohorts[super_cohort_key][int(row.student_id)]['matric'] = row.effective_date
+
       else:
         event_type = action_to_event[program_action]
         cohorts[cohort_key][int(row.student_id)][event_type] = effective_date
