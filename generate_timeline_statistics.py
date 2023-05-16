@@ -50,6 +50,7 @@ A cohort consists of all students who apply to transfer to a college for a given
   Interesting to see how the above has evolved as the code below was developed.
 """
 
+import csv
 import sys
 import argparse
 import datetime
@@ -233,6 +234,7 @@ parser.add_argument('-e', '--event_pairs', nargs='*', default=['apply:admit',
                                                                'latest_eval:start_classes',
                                                                'first_eval:census_date',
                                                                'latest_eval:census_date'])
+parser.add_argument('-esc', '--explicit_student_cohort')
 parser.add_argument('-d', '--debug', action='store_true')
 parser.add_argument('-n', '--event_names', action='store_true')
 parser.add_argument('-s', '--stats', nargs='*', default=['n',
@@ -257,6 +259,23 @@ if args.event_names:
   for k, v in event_definitions.items():
     print(f'{ k:16} {v}')
   exit('')
+
+# Handle explicit student cohort list, if present.
+explicit_student_cohort = []
+if args.explicit_student_cohort:
+  with open(args.explicit_student_cohort, 'r') as esc_file:
+    reader = csv.reader(esc_file)
+    for line in reader:
+      if reader.line_num == 1:
+        Row = namedtuple('Row', [col.lower().replace(' ', '_') for col in line])
+        if 'student_id' not in Row._fields:
+          exit('Explicit Student Cohort file has no “student_id” column')
+      else:
+        row = Row._make(line)
+        explicit_student_cohort.append(f'{int(row.student_id)}')
+  explicit_student_cohort_clause = f'and student_id in ({",".join(explicit_student_cohort)})'
+else:
+  explicit_student_cohort_clause = ''
 
 # Be sure queries/ file set is consistent
 is_copacetic = run(['./check_queries.py', '-nop'])
@@ -378,6 +397,7 @@ for institution in institutions:
         select student_id, program_action, action_reason, effective_date
           from admissions
          where institution = '{institution}01'
+           {explicit_student_cohort_clause}
            and admit_term {term_clause}
            and program_action in ('APPL', 'ADMT', 'DEIN', 'MATR', 'WADM')
            order by effective_date
