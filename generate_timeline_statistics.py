@@ -402,14 +402,17 @@ for institution in institutions:
            and program_action in ('APPL', 'ADMT', 'DEIN', 'MATR', 'WADM')
            order by effective_date
         """)
+
     if args.debug:
       print(f'{institution} {term_clause} has {cursor.rowcount:,} admission events')
+
     for row in cursor.fetchall():
       student_ids.add(int(row.student_id))
-      # For verificaton, show both commit (DEIN) and academic withdrawal (WADM) events as "Admin"
+
       program_action = row.program_action.lower()
       effective_date = row.effective_date
 
+      # For verificaton, show both commit (DEIN) and academic withdrawal (WADM) events as "Admin"
       if program_action in ['wadm', 'dein']:
         event_str = f'{row.program_action}:{row.action_reason}'.strip(':')
         cohorts[cohort_key][int(row.student_id)]['admin'].append(f'{effective_date} '
@@ -417,12 +420,13 @@ for institution in institutions:
         cohorts[super_cohort_key][int(row.student_id)]['admin'].append(f'{effective_date} '
                                                                        f'{event_str}')
         # Any DEIN implies Commit
-        cohorts[cohort_key][int(row.student_id)]['commit'] = row.effective_date
-        cohorts[super_cohort_key][int(row.student_id)]['commit'] = row.effective_date
-        # DEIN:ENDC and DEIN:DEPO imply Matric
-        if event_str in ['DEIN:ENDC', 'DEIN:DEPO']:
-          cohorts[cohort_key][int(row.student_id)]['matric'] = row.effective_date
-          cohorts[super_cohort_key][int(row.student_id)]['matric'] = row.effective_date
+        if program_action == 'dein':
+          cohorts[cohort_key][int(row.student_id)]['commit'] = effective_date
+          cohorts[super_cohort_key][int(row.student_id)]['commit'] = effective_date
+          # DEIN:ENDC and DEIN:DEPO imply Matric
+          if event_str in ['DEIN:ENDC', 'DEIN:DEPO']:
+            cohorts[cohort_key][int(row.student_id)]['matric'] = effective_date
+            cohorts[super_cohort_key][int(row.student_id)]['matric'] = effective_date
 
       else:
         event_type = action_to_event[program_action]
