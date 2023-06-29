@@ -68,6 +68,3 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
             cursor.execute(f"""
             insert into sessions ({column_names}) values ({placeholders})
             """, values)
-            # (row['institution'], row['term'], row['session'], row['first_date_to_enroll'],
-            #       row['open_enrollment_date'], row['last_date_to_enroll'],
-            #       row['session_beginning_date'], row['census_date'], row['session_end_date']))
