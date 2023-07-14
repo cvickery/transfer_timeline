@@ -1,9 +1,10 @@
 #! /usr/bin/env python3
-""" Create and populate the transfers_applied table.
-    The "full" CUNYfirst query includes evaluations from Spring 2018 to date. But we started
-    recording daily updates on March 3, 2021, so here, events after March 2, 2021 are skipped, to
-    allow subsequent updates to note changes. (re-evalations)
-    Also, ignore records where the model_status is not "Posted."
+"""Create and populate the transfers_applied table.
+
+The "full" CUNYfirst query includes evaluations from Spring 2018 to date. But we started recording
+daily updates on March 3, 2021, so here, events after March 2, 2021 are skipped, to allow subsequent
+updates to note changes. (re-evalations)
+Also, ignore records where the model_status is not "Posted."
 """
 
 import csv
