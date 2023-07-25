@@ -17,7 +17,8 @@ case `hostname` in
   trexlabs)               echo "Lehman takes care of timeline downloads on T-Rex Labs"
                           ;;
 
-  *)                      echo "Sync `hostname` from babbage"
+  *)                      # This fails if host is not connected to babbage by gpvpn
+                          echo "Sync `hostname` from babbage"
                           ./sync > /dev/null
                           ;;
 esac
