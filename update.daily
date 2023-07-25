@@ -10,13 +10,14 @@ echo -e '\n*** ' `date`
 
 case `hostname` in
 
-  babbage.cs.qc.cuny.edu) :
+  babbage.cs.qc.cuny.edu) echo "Download from QC Tumbleweed"
+                          /usr/local/bin/lftp -f getcunyrc
                           ;;
 
-  trexlabs)               :
+  trexlabs)               echo "Lehman takes care of timeline downloads on T-Rex Labs"
                           ;;
 
-  *)                      echo Sync `hostname` from babbage
+  *)                      echo "Sync `hostname` from babbage"
                           ./sync > /dev/null
                           ;;
 esac
