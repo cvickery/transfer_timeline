@@ -193,7 +193,7 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
   with conn.cursor(row_factory=namedtuple_row) as cursor:
     cursor.execute("""select count(*), term
                         from sessions
-                       where term >=1199
+                       where term >=1132
                          and term::text ~* '[29]$'
                        group by term
                        order by term;
