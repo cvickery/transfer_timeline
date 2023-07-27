@@ -1,7 +1,5 @@
 #! /usr/local/bin/python3
-""" Generate database tables for the different sources of information for potential baseline
-    measures.
-"""
+"""Generate database tables for transfer timeline events."""
 
 import csv
 import datetime
@@ -14,6 +12,8 @@ from pathlib import Path
 
 from pgconnection import PgConnection
 from timeline_utils import min_sec
+
+exit('NO LONGER USED. SEE update_timeline_tables.py FOR REPLACEMENT.')
 
 soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, [0x800, hard])
@@ -208,6 +208,7 @@ print(f'That took {min_sec(end_build_admit - end_read_admit)}', file=sys.stderr)
 # registraton_factory()
 # -------------------------------------------------------------------------------------------------
 def registration_factory():
+  """Generate enrollment date dictionaries."""
   return {'early_enrollment_date': None, 'end_enrollment_date': None}
 
 
