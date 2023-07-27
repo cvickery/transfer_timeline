@@ -40,7 +40,7 @@ csv_to_db = {'id': 'student_id',
              }
 
 # Create the table
-with psycopg.connect('dbname=cuny_transfers') as conn:
+with psycopg.connect('dbname=cuny_transfers', autocommit=True) as conn:
   with conn.cursor(row_factory=namedtuple_row) as cursor:
     cursor.execute("""
     drop table if exists admissions;
@@ -86,7 +86,7 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
         else:
           if show_progress:
             print(f'\r{reader.line_num:,}/{total_lines:,}', end='')
-          if line[admit_type_index] in ['TRD', 'TRN']:
+          if line[admit_type_index] in ['3', 'TRD', 'TRN']:
             # Build the row to insert, omitting missing dates and integers
             placeholders = ''
             column_names = []

@@ -202,7 +202,7 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
     cursor.execute("""select *
                         from sessions
                        where session='1'
-                         and term >=1199
+                         and term >=1132
                          and term::text ~* '[29]$'
                        order by institution, term
                     """)
@@ -321,7 +321,7 @@ for admit_term in args.admit_terms:
 
 # Senior colleges for "super cohort"
 senior_colleges = ['BAR', 'BKL', 'CTY', 'HTR', 'JJC', 'LEH', 'QNS', 'SLU', 'SPS', 'YRK']
-# Meaningful name for super_cohort colleges, with redundancies removed
+# Column heading name for super_cohort colleges, with repeated letters removed ('BCHJLQSY')
 super_cohort = ''.join([sc[0] for sc in senior_colleges]).replace('BB', 'B').replace('SS', 'S')
 
 # Institutions to show, in left to right order (from command line)
