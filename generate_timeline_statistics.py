@@ -2,6 +2,11 @@
 """Generate reports with times between various events for various cohorts.
 
 A cohort consists of all students who apply to transfer to a college for a given term.
+There are two ways to build the cohorts:
+  1.  Use the admissions table to find all students who applied for transfer admission to each
+      college.
+  2.  Use a “cohort” spreadsheet to get a list of emplids of interest, and use that to filter the
+      first process.
 
   reports/
     - Markdown report for each measure for each cohort
@@ -268,11 +273,11 @@ if args.explicit_student_cohort:
     for line in reader:
       if reader.line_num == 1:
         Row = namedtuple('Row', [col.lower().replace(' ', '_') for col in line])
-        if 'student_id' not in Row._fields:
-          exit('Explicit Student Cohort file has no “student_id” column')
+        if 'empl_id' not in Row._fields:
+          exit('Explicit Student Cohort file has no “empl_id” column')
       else:
         row = Row._make(line)
-        explicit_student_cohort.append(f'{int(row.student_id)}')
+        explicit_student_cohort.append(f'{int(row.empl_id)}')
   explicit_student_cohort_clause = f'and student_id in ({",".join(explicit_student_cohort)})'
 else:
   explicit_student_cohort_clause = ''
