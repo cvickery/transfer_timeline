@@ -24,33 +24,39 @@ import psycopg
 from collections import namedtuple
 from psycopg.rows import namedtuple_row
 
-with psycopg.connect('dbname=cuny_transfers') as conn:
-  with conn.cursor() as cursor:
+csv_name = 'QNS_CV_SESSION_TABLE.csv' if os.getenv('HOSTNAME') == 'trexlabs' \
+                                      else 'CV_TIMELINE_SESSION_TABLE.csv'
 
-    cursor.execute("""
-    drop table if exists sessions;
-    create table sessions (
-    institution           text,
-    term                  integer,
-    session               text,
-    early_enrollment      date default null,
-    open_enrollment       date default null,
-    last_enrollment       date default null,
-    classes_start         date default null,
-    census_date           date default null,
-    classes_end           date default null,
-    primary key (institution, term, session)
-    )
-    """)
-    csv_to_db = {'first_date_to_enroll': 'early_enrollment',
-                 'open_enrollment_date': 'open_enrollment',
-                 'last_date_to_enroll': 'last_enrollment',
-                 'session_beginning_date': 'classes_start',
-                 'census_date': 'census_date',
-                 'session_end_date': 'classes_end'
-                 }
-    with open('./queries/CV_TIMELINE_SESSION_TABLE.csv') as sess:
-      reader = csv.reader(sess)
+
+with open(f'./queries/{csv_name}') as sess:
+  reader = csv.reader(sess)
+  with psycopg.connect('dbname=cuny_transfers') as conn:
+    with conn.cursor() as cursor:
+
+      cursor.execute("""
+      drop table if exists sessions;
+      create table sessions (
+      institution           text,
+      term                  integer,
+      session               text,
+      early_enrollment      date default null,
+      open_enrollment       date default null,
+      last_enrollment       date default null,
+      classes_start         date default null,
+      census_date           date default null,
+      classes_end           date default null,
+      primary key (institution, term, session)
+      )
+      """)
+
+      csv_to_db = {'first_date_to_enroll': 'early_enrollment',
+                   'open_enrollment_date': 'open_enrollment',
+                   'last_date_to_enroll': 'last_enrollment',
+                   'session_beginning_date': 'classes_start',
+                   'census_date': 'census_date',
+                   'session_end_date': 'classes_end'
+                   }
+  
       for line in reader:
         if reader.line_num == 1:
           cols = [c.lower().replace(' ', '_') for c in line]
