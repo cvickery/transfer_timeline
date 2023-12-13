@@ -109,3 +109,4 @@ if __name__ == '__main__':
     exit()
   else:
     exit(f'Query dates DON’T match.')
+

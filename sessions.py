@@ -1,6 +1,10 @@
 #! /usr/local/bin/python3
 """Create sessions table for 2010 to now.
 
+The name of the sessions query used at Lehman is different from the name used at Queens.
+Lehman: QNS_CV_SESSION_TABLE.csv
+Queens: CV_TIMELINE_SESSION_TABLE.csv
+
 Renaming CUNYfirst fields:
   Institution             institution
   Term                    term
@@ -14,6 +18,7 @@ Renaming CUNYfirst fields:
 
 """
 import csv
+import os
 import psycopg
 
 from collections import namedtuple
