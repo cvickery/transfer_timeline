@@ -18,7 +18,7 @@ initializers = {
     'ADMIT_TYPE_TBL.csv': 'admit_types.py',
     'PROG_REASON_TBL.csv': 'program_reasons.py',
     'CV_QNS_STUDENT_SUMMARY.csv': 'registrations.py',
-    'QNS_CV_SESSION_TABLE.csv': 'sessions.py'
+    'CV_TIMELINE_SESSION_TABLE.csv': 'sessions.py'
 }
 
 if __name__ == '__main__':
