@@ -49,7 +49,7 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
                  'census_date': 'census_date',
                  'session_end_date': 'classes_end'
                  }
-    with open('./queries/QNS_CV_SESSION_TABLE.csv') as sess:
+    with open('./queries/CV_TIMELINE_SESSION_TABLE.csv') as sess:
       reader = csv.reader(sess)
       for line in reader:
         if reader.line_num == 1:
