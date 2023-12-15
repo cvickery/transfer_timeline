@@ -846,6 +846,6 @@ for event_pair in event_pairs:
     ws.merge_cells(start_row=row, end_row=row, start_column=1, end_column=len(headings))
 
 del wb['Sheet']
-wb.save(f'./{date.today()}.xlsx')
+wb.save(f'./xlsx_archive/{date.today()}.xlsx')
 
 print(f'Total Time {min_sec(time.time() - start_time)}')
