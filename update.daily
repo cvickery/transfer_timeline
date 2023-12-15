@@ -35,6 +35,6 @@ then
   if [[ $? == 0 ]]
   then
     echo Generate Timeline Statistics
-    generate_timeline_statistics.py -nop
+    generate_timeline_statistics.py -no_progress
   fi
 fi
