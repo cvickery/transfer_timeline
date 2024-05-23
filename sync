@@ -1,4 +1,4 @@
 #! /usr/local/bin/bash
 
-rsync -vte ssh 149.4.44.244:/Users/vickery/Projects/transfer_timeline/downloads/CV_QNS_* $HOME/Projects/transfer_timeline/downloads
-rsync -vte ssh 149.4.44.244:/Users/vickery/Projects/transfer_timeline/queries/CV_QNS_* $HOME/Projects/transfer_timeline/query_downloads
+rsync -vte ssh chris@trexlabs.lehman.edu:/home/chris/Projects/transfer_timeline/downloads/CV_QNS_* $HOME/Projects/transfer_timeline/downloads
+rsync -vte ssh chris@trexlabs.lehman.edu:/home/chris/Projects/transfer_timeline/queries/CV_QNS_* $HOME/Projects/transfer_timeline/queries
