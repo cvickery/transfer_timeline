@@ -4,7 +4,7 @@
 sysop=christopher.vickery@qc.cuny.edu
 
 # Tell sysop we’re here
-date | $HOME/bin/sendemail -s "Timeline Update started" ${sysop}
+date | "$HOME"/bin/sendemail -s "Timeline Update started" ${sysop}
 
 # Update from the latest download
 ./update_transfers_applied.py --no_progress
@@ -20,4 +20,4 @@ then
   fi
 fi
 
-date | $HOME/bin/sendemail -s "Timeline Update Finished" ${sysop}
+date | "$HOME"/bin/sendemail -s "Timeline Update Finished" ${sysop}
