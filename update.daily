@@ -1,40 +1,23 @@
 #! /usr/local/bin/bash
 # cron job to run daily
 
-# May be run from babbage, trexlabs, or some other machine.
+sysop=christopher.vickery@qc.cuny.edu
 
-# set -x
-
-# timestamp the log file
-echo -e '\n*** ' `date`
-
-case `hostname` in
-
-  babbage.cs.qc.cuny.edu) echo "Download from QC Tumbleweed"
-                          /usr/local/bin/lftp -f getcunyrc
-                          ;;
-
-  trexlabs)               echo "Lehman takes care of timeline downloads on T-Rex Labs"
-                          ;;
-
-  *)                      # This fails if host is not connected to babbage by gpvpn
-                          echo "Sync `hostname` from babbage"
-                          ./sync > /dev/null
-                          ;;
-esac
+# Tell sysop we’re here
+date | $HOME/bin/sendemail -s "Timeline Update started" ${sysop}
 
 # Update from the latest download
 ./update_transfers_applied.py --no_progress
 
 # Validate query_downloads
-./check_queries.py -l
-if [[ $? == 0 ]]
-then 
+if ./check_queries.py -l
+then
   echo Update Tables
-  update_timeline_tables.py
-  if [[ $? == 0 ]]
+  if update_timeline_tables.py
   then
     echo Generate Timeline Statistics
     generate_timeline_statistics.py --no_progress
   fi
 fi
+
+date | $HOME/bin/sendemail -s "Timeline Update Finished" ${sysop}
