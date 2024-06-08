@@ -6,24 +6,26 @@ sysop=christopher.vickery@qc.cuny.edu
 # Tell sysop we’re here
 date | "$HOME"/bin/sendemail -s "Timeline Update Started on $(hostname)" ${sysop}
 
-date > ./update.log
+echo "<pre>$(date)" > ./update.log
 SECONDS=0
 
 # Update from the latest download
-./update_transfers_applied.py --no_progress | tee -a ./update.log
+./update_transfers_applied.py --no_progress 2>&1 | tee -a ./update.log
 
 # Validate query_downloads
-if ./check_queries.py -l | tee -a ./update.log
+if ./check_queries.py -l 2>&1 | tee -a ./update.log
 then
-  echo Update Tables | tee -a ./update.log
-  if update_timeline_tables.py | tee -a ./update.log
+  echo Update Tables 2>&1 | tee -a ./update.log
+  if update_timeline_tables.py 2>&1 | tee -a ./update.log
   then
-    echo Generate Timeline Statistics | tee -a ./update.log
-    generate_timeline_statistics.py --no_progress | tee -a ./update.log
+    echo Generate Timeline Statistics 2>&1 | tee -a ./update.log
+    generate_timeline_statistics.py --no_progress 2>&1 | tee -a ./update.log
   fi
 fi
+
 hr=$(( SECONDS / 3600 ))
 min=$((( SECONDS % 3600 ) / 60 ))
 sec=$(( SECONDS % 60 ))
 printf "That took %02d:%02d:%02d" $hr $min $sec | tee -a ./update.log
+
 "$HOME"/bin/sendemail -s "Timeline Update Finished on $(hostname)" ${sysop} < ./update.log
