@@ -9,8 +9,7 @@
 /Logs/
 /out
 /skipped
-/build_baseline_tables.log
-/grouped_timelines.log
+/*.log
 /__pycache__/
 /README.pdf
 /downloads/
