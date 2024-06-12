@@ -260,7 +260,7 @@ show_progress = not args.no_progress
 
 # If event names are requested, show the possibilities and exit.
 if args.event_names:
-  print(f'            ')
+  print('            ')
   for k, v in event_definitions.items():
     print(f'{ k:16} {v}')
   exit('')
@@ -285,7 +285,7 @@ else:
 # Be sure queries/ file set is consistent
 is_copacetic = run(['./check_queries.py', '-nop'])
 if is_copacetic.returncode:
-  exit(f'Query check failed')
+  exit('Query check failed')
 
 # Process processing options
 stats_to_show = [stat for stat in args.stats]
@@ -305,12 +305,12 @@ for arg in args.event_pairs:
       event_pairs.append(EventPair(earlier, later))
     else:
       raise ValueError('Unrecognized event_pair')
-  except ValueError as ve:
+  except ValueError:
     exit(f'“{arg}” does not match earlier:later event_pair structure.\n'
          f'Valid event types are:\n  {event_type_list}')
 
 if len(args.admit_terms) < 1 or len(args.institutions) < 1:
-  sys.exit(f'Usage: -t admit_term... -i institution... -e event_pair...')
+  sys.exit('Usage: -t admit_term... -i institution... -e event_pair...')
 
 admit_terms = []
 for admit_term in args.admit_terms:
@@ -604,7 +604,7 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
         if 0 == stat_values[super_cohort][admit_term.term][event_pair].n:
           # Skip terms where there is no data yet
           continue
-        for institution in institutions:
+        for institution in institutions + [super_cohort]:
           values = [institution, admit_term.term, event_pair]
 
           n = stat_values[institution][admit_term.term][event_pair].n
@@ -634,7 +634,7 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
 
 # Generate Excel workbook
 # ------------------------------------------------------------------------------------------------
-print(f'Generate Workbook', file=sys.stderr)
+print('Generate Workbook', file=sys.stderr)
 """ One sheet for each measure; colleges by columns; rows are statistics for admit term
 """
 centered = Alignment('center')
