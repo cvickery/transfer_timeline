@@ -1,12 +1,13 @@
 #! /usr/local/bin/bash
 # cron job to run daily
 
-sysop=christopher.vickery@qc.cuny.edu
-SECONDS=0
-
 # Must be in transfer_timeline project directory
 (
+  SECONDS=0
+
   cd "$HOME/Projects/transfer_timeline" || (echo "Unable to cd to timeline project dir"; exit 1)
+
+  sysop=christopher.vickery@qc.cuny.edu
 
   # Tell sysop we’re here
   date | "$HOME"/bin/sendemail -s "Timeline Update Started on $(hostname)" ${sysop}
@@ -26,11 +27,11 @@ SECONDS=0
       ./generate_timeline_statistics.py --no_progress 2>&1 | tee -a ./update.log
     fi
   fi
+
+  hr=$(( SECONDS / 3600 ))
+  min=$((( SECONDS % 3600 ) / 60 ))
+  sec=$(( SECONDS % 60 ))
+  printf "Timeline update took %02d:%02d:%02d" $hr $min $sec | tee -a ./update.log
+
+  "$HOME"/bin/sendemail -s "Timeline Update Finished on $(hostname)" ${sysop} < ./update.log
 )
-
-hr=$(( SECONDS / 3600 ))
-min=$((( SECONDS % 3600 ) / 60 ))
-sec=$(( SECONDS % 60 ))
-printf "Timeline update took %02d:%02d:%02d" $hr $min $sec | tee -a ./update.log
-
-"$HOME"/bin/sendemail -s "Timeline Update Finished on $(hostname)" ${sysop} < ./update.log
