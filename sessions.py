@@ -24,11 +24,7 @@ import psycopg
 from collections import namedtuple
 from psycopg.rows import namedtuple_row
 
-csv_name = 'QNS_CV_SESSION_TABLE.csv' if os.getenv('HOSTNAME') == 'trexlabs' \
-                                      else 'CV_TIMELINE_SESSION_TABLE.csv'
-
-
-with open(f'./queries/{csv_name}') as sess:
+with open(f'./queries/QNS_CV_SESSION_TABLE.csv') as sess:
   reader = csv.reader(sess)
   with psycopg.connect('dbname=cuny_transfers') as conn:
     with conn.cursor() as cursor:
@@ -56,7 +52,7 @@ with open(f'./queries/{csv_name}') as sess:
                    'census_date': 'census_date',
                    'session_end_date': 'classes_end'
                    }
-  
+
       for line in reader:
         if reader.line_num == 1:
           cols = [c.lower().replace(' ', '_') for c in line]
