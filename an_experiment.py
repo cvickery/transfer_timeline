@@ -57,7 +57,7 @@ def lookup(send_id: int, recv_ids: list):
 def is_bkcr(course_id: int, offer_nbr: int) -> bool:
   """ Is a course blanket credit?
   """
-  if (course_id, offer_nbr not in blankets_cache.keys()):
+  if (course_id, offer_nbr) not in blankets_cache.keys():
     cursor.execute(f"""
     select attributes ~ 'BKCR' as is_blanket
     from cuny_courses

@@ -18,13 +18,10 @@ Renaming CUNYfirst fields:
 
 """
 import csv
-import os
 import psycopg
 
-from collections import namedtuple
-from psycopg.rows import namedtuple_row
 
-with open(f'./queries/QNS_CV_SESSION_TABLE.csv') as sess:
+with open('./queries/QNS_CV_SESSION_TABLE.csv') as sess:
   reader = csv.reader(sess)
   with psycopg.connect('dbname=cuny_transfers') as conn:
     with conn.cursor() as cursor:

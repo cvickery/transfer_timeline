@@ -1,12 +1,9 @@
 #! /usr/local/bin/python3
 """Rebuild all of the timeline tables other than transfers_applied."""
 
-import psycopg
-import sys
 
 from datetime import date
 from pathlib import Path
-from psycopg.rows import namedtuple_row
 from subprocess import run
 from time import time
 from timeline_utils import min_sec

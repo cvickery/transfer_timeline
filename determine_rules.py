@@ -45,7 +45,7 @@ select student_id,
        dst_designation
   from transfers_applied
 """)
-print(f'Sending, Course, Receiving, Course, Rule Key')
+print('Sending, Course, Receiving, Course, Rule Key')
 m = 0
 n = cursor.rowcount
 for row in cursor.fetchall():

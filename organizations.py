@@ -40,7 +40,7 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
         else:
           row = Row._make(line)
           if row.external_org_id.isdecimal():
-            cursor.execute(f"""
+            cursor.execute("""
         insert into organizations values(%s, %s, %s, %s, %s)
         on conflict do nothing
     """, (int(row.external_org_id), row.search_name, row.organization_type, row.description,

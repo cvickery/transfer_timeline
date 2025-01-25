@@ -10,7 +10,7 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from psycopg.rows import namedtuple_row, dict_row
+from psycopg.rows import dict_row
 
 start_at = datetime.now()
 

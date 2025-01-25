@@ -118,7 +118,7 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
         admit_term += 3
       try:
         requirement_term = int(row.requirement_term)
-      except ValueError as ve:
+      except ValueError:
         requirement_term = 0
       if row.career not in ['UGRD', 'UKCC', 'ULAG']:
         continue
@@ -126,7 +126,7 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
         admittee_key = Admittee_Key._make([int(row.id), int(row.appl_nbr), row.last_school_attended,
                                           row.institution[0:3],
                                           admit_term, requirement_term])
-      except ValueError as ve:
+      except ValueError:
         print(f'Admittee Key situation: {row}\n', file=logfile)
         continue
       if row.program_action in ['APPL', 'ADMT', 'DEIN', 'MATR', 'WADM'] \
@@ -136,7 +136,7 @@ with open(admissions_table_file, encoding='ascii', errors='backslashreplace') as
           action_date = datetime.date(int(y), int(m), int(d))
           m, d, y = row.eff_date.split('/')
           effective_date = datetime.date(int(y), int(m), int(d))
-        except ValueError as ve:
+        except ValueError:
           print(f'Admittee Date situation: {row}\n', file=logfile)
           continue
         admittees[admittee_key][row.program_action] = \
@@ -175,7 +175,7 @@ primary key (student_id,
 """)
 for key in admittees.keys():
   for program_action in admittees[key].keys():
-    trans_cursor.execute(f"""
+    trans_cursor.execute("""
 insert into admissions values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 on conflict do nothing;
 """, (key.student_id, key.application_number, key.last_school_attended, key.institution,
@@ -245,7 +245,7 @@ with open(registrations_table_file, encoding='ascii', errors='backslashreplace')
       try:
         mo, da, yr = row.enrollment_add_date.split('/')
         enrollment_date = datetime.date(int(yr), int(mo), int(da))
-      except ValueError as ve:
+      except ValueError:
         print(f'Enrollment date situation: {row}', file=logfile)
         continue
       first = registration_events[registration_key]['early_enrollment_date']
@@ -276,7 +276,7 @@ create table registrations (
   primary key (student_id, institution, term))
 """)
 for registration_key in registration_events.keys():
-  trans_cursor.execute(f"""
+  trans_cursor.execute("""
 insert into registrations values (%s, %s, %s, %s, %s)
 """, (registration_key.student_id, registration_key.institution, registration_key.term,
       registration_events[registration_key]['early_enrollment_date'],

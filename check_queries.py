@@ -16,7 +16,6 @@ Copascetic Post-Check:
 import argparse
 import re
 import sys
-import subprocess
 
 from datetime import date
 from pathlib import Path
@@ -108,5 +107,5 @@ if __name__ == '__main__':
     print('  done')
     exit()
   else:
-    exit(f'Query dates DON’T match.')
+    exit('Query dates DON’T match.')
 

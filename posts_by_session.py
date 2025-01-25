@@ -81,7 +81,7 @@ with open('./weeks_by_college.csv', 'w') as report:
 with open('./bad_keys', 'w') as key_errors:
   trans_conn = PgConnection('cuny_transfers')
   trans_cursor = trans_conn.cursor()
-  trans_cursor.execute(f"""
+  trans_cursor.execute("""
   select count(*), student_id,
          enrollment_term as term, enrollment_session as session, dst_institution as college,
          posted_date

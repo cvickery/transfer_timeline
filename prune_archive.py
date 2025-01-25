@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 
 archive_dir = Path('./query_archive')
-assert archive_dir.is_dir(), f'./query_archive not here.'
+assert archive_dir.is_dir(), './query_archive not here.'
 latest = None
 for query_file in archive_dir.glob('*.csv'):
   if latest is None or query_file.stat().st_mtime > latest:

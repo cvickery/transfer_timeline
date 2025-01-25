@@ -21,7 +21,7 @@ select src_institution,
     rollup (src_institution, dst_institution)
 order by src_institution, dst_institution, count desc, sending_course
 """)
-print(f'Count, Sending, Course, Receiving, Course, RD')
+print('Count, Sending, Course, Receiving, Course, RD')
 for row in cursor.fetchall():
   print(f'{row.count}, {row.src_institution}, {row.sending_course}, '
         f'{row.dst_institution}, {row.receiving_course}, {row.dst_designation}')

@@ -7,7 +7,6 @@ import sys
 
 from collections import namedtuple
 from datetime import datetime
-from psycopg.rows import dict_row
 
 show_progress = len(sys.argv) > 1
 start_time = datetime.now()

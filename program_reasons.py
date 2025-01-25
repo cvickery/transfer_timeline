@@ -3,11 +3,9 @@
 
 import csv
 import psycopg
-import sys
 
 from collections import namedtuple
 from pathlib import Path
-from psycopg.rows import namedtuple_row
 
 
 with psycopg.connect('dbname=cuny_transfers') as conn:

@@ -10,7 +10,6 @@ import sys
 from collections import namedtuple
 from pathlib import Path
 from pgconnection import PgConnection
-from psycopg2 import errors
 
 conn = PgConnection()
 cursor = conn.cursor()

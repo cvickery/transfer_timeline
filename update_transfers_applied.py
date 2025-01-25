@@ -12,7 +12,7 @@ import psycopg
 import resource
 import sys
 
-from collections import namedtuple, defaultdict
+from collections import namedtuple
 from pathlib import Path
 from psycopg.rows import namedtuple_row
 
