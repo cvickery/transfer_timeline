@@ -78,7 +78,7 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
                 continue
               placeholders += ',%s '
               column_names.append(row_key)
-              column_values.append(line[cols.index(line_key)])
+              column_values.append(line[cols.index(line_key)].strip())
 
             placeholders = placeholders.strip(', ')
             column_names = ', '.join(column_names)
