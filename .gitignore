@@ -1,6 +1,8 @@
 .DS_Store
+.nova
 *.txt
 *.csv
+*.out
 *.xlsx
 *.zip
 /debug
@@ -11,6 +13,6 @@
 /skipped
 /*.log
 /__pycache__/
+/Admissions_Registrations_Archive/
 /README.pdf
 /downloads/
-/Admissions_Registrations_Archive/
