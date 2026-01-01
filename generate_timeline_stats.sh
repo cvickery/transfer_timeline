@@ -1,5 +1,6 @@
 #! /usr/local/bin/bash
-echo Obsolete. Do not use!
+
+echo OBSOLETE. DO NOT USE!
 exit 1
 
 # Generate/Update a standardized set of event interval data.
