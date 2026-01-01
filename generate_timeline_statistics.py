@@ -610,10 +610,14 @@ with psycopg.connect('dbname=cuny_transfers') as conn:
           n = stat_values[institution][admit_term.term][event_pair].n
           std_dev = stat_values[institution][admit_term.term][event_pair].std_dev
           if n > 0 and std_dev is not None:
-            conf_95 = 0.95 * (std_dev / sqrt(n))
+              if n >= 30:
+                  conf_95 = 1.96 * (std_dev / sqrt(n))
+              else:
+                  from scipy.stats import t
+                  t_critical = t.ppf(0.975, df=n-1)  # 0.975 for two-tailed 95% CI
+                  conf_95 = t_critical * (std_dev / sqrt(n))
           else:
-            conf_95 = None
-
+              conf_95 = None
           values.append(n)
           values.append(stat_values[institution][admit_term.term][event_pair].median)
           values.append(stat_values[institution][admit_term.term][event_pair].siqr)
